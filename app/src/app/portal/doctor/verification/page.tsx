@@ -55,14 +55,14 @@ export default async function DoctorVerification() {
           </Card>
           <div className="space-y-4">
             {status === "verified" ? (
-              <Alert tone="pine" title="You're cleared to practice on MediLink">
+              <Alert tone="pine" title="You’re cleared to practice on MediLink">
                 You can search patients, read consented records, contribute verified clinical
                 data, and generate cited summaries.
               </Alert>
             ) : status === "pending" ? (
               <Alert tone="amber" title="In the review queue">
                 A platform reviewer checks your council registration. Typical turnaround: 1–2
-                working days. You'll be notified.
+                working days. You’ll be notified.
               </Alert>
             ) : (
               <Alert tone="alert" title="Verification rejected">
@@ -93,7 +93,7 @@ export default async function DoctorVerification() {
         </Card>
         <div className="space-y-4">
           <Alert tone="info" title="Why we verify">
-            Every record on MediLink carries its author's verified identity — that's what makes
+            Every record on MediLink carries its author’s verified identity — that’s what makes
             the provenance chain worth trusting. Your details are never shown to patients beyond
             your name and specialty.
           </Alert>

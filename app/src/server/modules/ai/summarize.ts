@@ -19,7 +19,6 @@ import { db } from "@/server/db";
 import {
   aiSummaries,
   aiSummaryClaims,
-  encounters,
   patients,
 } from "@/server/db/schema";
 import { records } from "@/server/modules/records/service";

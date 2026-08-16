@@ -20,7 +20,7 @@ export default async function OrgConsole() {
       <>
         <PageHeader eyebrow="Facility console" title="No facility attached" />
         <Alert tone="info" title="Attach your facility">
-          Your account isn&apos;t linked to an organization yet. An existing facility admin can
+          Your account isn’t linked to an organization yet. An existing facility admin can
           attach you, or a platform admin creates your facility.
         </Alert>
       </>

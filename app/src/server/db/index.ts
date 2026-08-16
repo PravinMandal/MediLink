@@ -20,7 +20,8 @@ import * as schema from "./schema";
 /** Either driver presents the same PgDatabase surface; schema is shared. */
 export type Db = NodePgDatabase<typeof schema> | PgliteDatabase<typeof schema>;
 
-const DATA_DIR = ".pglite/medilink";
+/** Overridable (tests point it at an isolated temp database). */
+const DATA_DIR = process.env.MEDILINK_PG_DIR ?? ".pglite/medilink";
 
 async function ensureLocalDir() {
   if (typeof process !== "undefined" && process.versions?.node) {
@@ -136,7 +137,11 @@ function buildTimeStub(): Db {
   // queries execute. PGlite must not initialize (workers contend for the
   // data-dir lock); any accidental build-time query fails loudly here.
   return new Proxy({} as Db, {
-    get() {
+    get(_t, prop) {
+      // `await` probes for thenables — stay inert for promise protocol keys.
+      if (prop === "then" || prop === "catch" || prop === "finally") {
+        return undefined;
+      }
       throw new Error("Database must not be queried during build");
     },
   });

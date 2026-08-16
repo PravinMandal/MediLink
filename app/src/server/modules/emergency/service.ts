@@ -5,7 +5,7 @@
  * time-boxed access to the critical emergency profile → patient notified →
  * event lands in the review queue. Every access is audited.
  */
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   emergencyAccessEvents,

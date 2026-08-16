@@ -8,7 +8,7 @@
  * Runs inline today; the same step functions can be moved onto a durable
  * queue (Inngest) in production without touching callers.
  */
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { documents, searchChunks } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";

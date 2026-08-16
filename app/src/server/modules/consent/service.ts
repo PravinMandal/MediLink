@@ -2,7 +2,7 @@
  * Consent service — patients control who sees what, for how long, and why.
  * DPDP-aligned: purpose + scope + expiry + one-tap revoke + audit trail.
  */
-import { and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "@/server/db";
 import { consents, organizations, practitioners } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";

@@ -67,7 +67,12 @@ export const search = {
           sql`to_tsvector('english', ${searchChunks.content}) @@ websearch_to_tsquery('english', ${q})`,
         ),
       )
-      .orderBy(sql`rank DESC`)
+      .orderBy(
+        sql`ts_rank(
+          to_tsvector('english', ${searchChunks.content}),
+          websearch_to_tsquery('english', ${q})
+        ) DESC`,
+      )
       .limit(limit);
 
     const terms = q.split(/\s+/).filter(Boolean);

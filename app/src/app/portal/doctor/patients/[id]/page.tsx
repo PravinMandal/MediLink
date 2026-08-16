@@ -27,7 +27,7 @@ import { summarizer } from "@/server/modules/ai/summarize";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, ageFrom } from "@/lib/utils";
 import type { ConsentScope } from "@/server/modules/consent/service";
 
 export const metadata: Metadata = { title: "Patient record" };
@@ -164,9 +164,8 @@ export default async function DoctorPatientPage({
   const viaEmergency = decision.via === "emergency";
   const tab = TABS.some((t) => t.key === rawTab) ? (rawTab as string) : "summary";
 
-  const ageDob = patient.dob
-    ? `${Math.floor((Date.now() - new Date(patient.dob).getTime()) / 3.15576e10)}y · b. ${formatDate(patient.dob, "short")}`
-    : "";
+  const age = ageFrom(patient.dob);
+  const ageDob = age != null ? `${age}y · b. ${formatDate(patient.dob, "short")}` : "";
 
   // Fetch only what the consent allows — never query what the grantee can't see.
   const [bloodGroup, allergies, meds, conds, summary, conflicts] = await Promise.all([
