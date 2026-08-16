@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/*
+ * MediLink product design system — "clinical instrument".
+ *
+ * Grounded in the subject's world: lab report sheets, chart annotations,
+ * medical seals. Cool clinical paper, deep pine ink, one reserved emergency
+ * red. Data and citations are set in mono — the voice of the lab printout.
+ * Calm, precise, trustworthy; decoration spent only on the citation chain.
+ */
+
+@theme {
+  --color-paper: #f7f8f6;
+  --color-paper-raised: #ffffff;
+  --color-paper-sunk: #eff1ee;
+
+  --color-ink: #1b2420;
+  --color-ink-soft: #5a6660;
+  --color-ink-faint: #8a948e;
+
+  --color-line: #e4e8e2;
+  --color-line-strong: #cbd2cc;
+
+  --color-pine: #14594b;
+  --color-pine-deep: #0e4036;
+  --color-pine-tint: #e3efea;
+  --color-pine-ink: #0d3a30;
+
+  --color-alert: #b3261e;
+  --color-alert-deep: #8f1e18;
+  --color-alert-tint: #fbeae9;
+
+  --color-amber: #92610f;
+  --color-amber-tint: #fcf3e3;
+
+  --color-info: #1d5d8a;
+  --color-info-tint: #e8f1f7;
+
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-instrument), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Focus: always visible, pine ring */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-pine);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-pine-tint);
+  color: var(--color-pine-ink);
+}
+
+/* Tabular numerals wherever data lives */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+/* Verified seal — the trust mark. Used sparingly. */
+.seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-pine);
+  border: 1px solid var(--color-pine);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
+  background: var(--color-pine-tint);
+}
+
+/* Hairline card */
+.card {
+  background: var(--color-paper-raised);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+/* Motion discipline: only transform/opacity; respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scrollbars: subtle, only when needed */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}

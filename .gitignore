@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+dist/
+.uploads/
+.env
+.env.*
+!.env.example
+*.local
+.vercel
+next-env.d.ts
+.DS_Store
+playwright-report/
+test-results/
+.drizzle/
+.pglite/

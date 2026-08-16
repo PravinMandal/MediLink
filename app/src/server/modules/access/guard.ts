@@ -1,0 +1,183 @@
+/**
+ * Access guard — THE single enforcement point for every clinical read.
+ *
+ * Rules:
+ * - Patients see their own record (any scope).
+ * - Doctors/staff see only what an active, unexpired consent grant covers.
+ * - Break-glass emergency access unlocks a critical subset, time-boxed,
+ *   always audited.
+ * - Platform admins are denied clinical reads here on purpose.
+ *
+ * Every service in records/documents/search/ai funnels through
+ * `assertCanAccess` — this is the module the security tests attack.
+ */
+import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { db } from "@/server/db";
+import {
+  emergencyAccessEvents,
+  patients,
+} from "@/server/db/schema";
+import {
+  consent as consentService,
+  ALL_SCOPES,
+  type ConsentScope,
+} from "@/server/modules/consent/service";
+import { getPractitionerForUser } from "@/server/modules/identity/verification";
+
+/** Scopes unlockable via break-glass emergency access. */
+export const EMERGENCY_SCOPES: ConsentScope[] = [
+  "demographics",
+  "conditions",
+  "allergies",
+  "medications",
+  "lab_results",
+];
+
+export type AccessVia = "self" | "consent" | "emergency";
+
+export type AccessDecision = {
+  allowed: boolean;
+  via: AccessVia | null;
+  scopes: ConsentScope[];
+};
+
+export class AccessDeniedError extends Error {
+  constructor(message = "ACCESS_DENIED") {
+    super(message);
+    this.name = "AccessDeniedError";
+  }
+}
+
+/** Map a clinical table name to the consent scope governing it. */
+export function scopeForResource(resourceType: string): ConsentScope {
+  switch (resourceType) {
+    case "conditions":
+    case "encounters":
+      return "conditions";
+    case "allergies":
+      return "allergies";
+    case "medication_statements":
+      return "medications";
+    case "observations":
+      return "lab_results";
+    case "diagnostic_reports":
+      return "lab_results";
+    case "procedures":
+    case "immunizations":
+      return "procedures";
+    case "documents":
+      return "documents";
+    default:
+      return "documents";
+  }
+}
+
+interface GuardUser {
+  id: string;
+  role: "patient" | "doctor" | "lab_staff" | "org_admin" | "platform_admin";
+  organizationId?: string | null;
+}
+
+export const access = {
+  async check(
+    user: GuardUser,
+    patientId: string,
+    scope: ConsentScope | ConsentScope[] | "*",
+  ): Promise<AccessDecision> {
+    // Patient self-access
+    if (user.role === "patient") {
+      const [row] = await db
+        .select({ id: patients.id })
+        .from(patients)
+        .where(and(eq(patients.id, patientId), eq(patients.userId, user.id)));
+      return row
+        ? { allowed: true, via: "self", scopes: [...ALL_SCOPES] }
+        : { allowed: false, via: null, scopes: [] };
+    }
+
+    // Platform admins never read clinical data through this path.
+    if (user.role === "platform_admin") {
+      return { allowed: false, via: null, scopes: [] };
+    }
+
+    // Organization-scoped staff (labs, org admins)
+    if (user.role === "lab_staff" || user.role === "org_admin") {
+      if (!user.organizationId) return { allowed: false, via: null, scopes: [] };
+      const grants = await consentService.activeForOrganization(
+        patientId,
+        user.organizationId,
+      );
+      const scopes = grants.flatMap((g) => g.scopes as ConsentScope[]);
+      if (scope === "*") {
+        return scopes.length
+          ? { allowed: true, via: "consent", scopes }
+          : { allowed: false, via: null, scopes: [] };
+      }
+      const wanted = Array.isArray(scope) ? scope : [scope];
+      const ok = wanted.every((s) => scopes.includes(s));
+      return ok
+        ? { allowed: true, via: "consent", scopes }
+        : { allowed: false, via: null, scopes: [] };
+    }
+
+    // Doctors: consent grants to their practitioner identity…
+    if (user.role === "doctor") {
+      const practitioner = await getPractitionerForUser(user.id);
+      if (!practitioner) return { allowed: false, via: null, scopes: [] };
+
+      const grants = await consentService.activeForPractitioner(
+        patientId,
+        practitioner.id,
+      );
+      const scopes = grants.flatMap((g) => g.scopes as ConsentScope[]);
+
+      if (scope !== "*") {
+        const wanted = Array.isArray(scope) ? scope : [scope];
+        if (wanted.every((s) => scopes.includes(s))) {
+          return { allowed: true, via: "consent", scopes };
+        }
+      } else if (scopes.length) {
+        return { allowed: true, via: "consent", scopes };
+      }
+
+      // …or an active break-glass emergency session.
+      const [emergency] = await db
+        .select()
+        .from(emergencyAccessEvents)
+        .where(
+          and(
+            eq(emergencyAccessEvents.patientId, patientId),
+            eq(emergencyAccessEvents.practitionerId, practitioner.id),
+            gt(emergencyAccessEvents.expiresAt, new Date()),
+            or(
+              isNull(emergencyAccessEvents.reviewStatus),
+              eq(emergencyAccessEvents.reviewStatus, "pending"),
+              eq(emergencyAccessEvents.reviewStatus, "reviewed"),
+            ),
+          ),
+        );
+      if (emergency) {
+        if (scope === "*") {
+          return { allowed: true, via: "emergency", scopes: EMERGENCY_SCOPES };
+        }
+        const wanted = Array.isArray(scope) ? scope : [scope];
+        const ok = wanted.every((s) => EMERGENCY_SCOPES.includes(s));
+        return ok
+          ? { allowed: true, via: "emergency", scopes: EMERGENCY_SCOPES }
+          : { allowed: false, via: null, scopes: [] };
+      }
+    }
+
+    return { allowed: false, via: null, scopes: [] };
+  },
+
+  async assert(
+    user: GuardUser,
+    patientId: string,
+    scope: ConsentScope | ConsentScope[] | "*",
+  ): Promise<AccessDecision> {
+    const decision = await this.check(user, patientId, scope);
+    if (!decision.allowed) throw new AccessDeniedError();
+    return decision;
+  },
+};
