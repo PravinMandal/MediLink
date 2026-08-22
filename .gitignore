@@ -41,3 +41,8 @@ coverage/
 # agent planning session artifacts
 .zcode/
 
+
+# next.js template leftovers kept locally (unused)
+app/README.md
+app/public/*.svg
+
