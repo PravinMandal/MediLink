@@ -10,8 +10,8 @@
 
 ## THE MISSION
 
-Transform MediLink (repo: `E:\A dream path\Projects\MediLink\app`, live at
-https://app-umber-seven-70.vercel.app, Vercel + Supabase Mumbai + Gemini) from a
+Transform MediLink (repo: `E:\A dream path\Projects\MediLink\app`, live URL in
+`docs/overhaul/DEPLOY.md`'s header note / Vercel dashboard, Vercel + Supabase
 functionally-complete but visually plain app into a **visually spectacular,
 heavily animated, Awwwards-caliber product** — while keeping every existing
 security, consent, provenance, and audit guarantee intact (24+ tests must stay

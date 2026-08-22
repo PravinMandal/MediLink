@@ -37,3 +37,7 @@ coverage/
 # AI agent instruction files (local tooling only)
 **/AGENTS.md
 **/CLAUDE.md
+
+# agent planning session artifacts
+.zcode/
+

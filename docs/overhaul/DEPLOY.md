@@ -1,6 +1,9 @@
 # MediLink — Free-tier deployment runbook
 
-**LIVE: https://app-umber-seven-70.vercel.app** (deployed 2026-08-23 — Vercel project `pravin-7393/app`, Supabase `datosorvtxtxtcvqboxv` Mumbai, Gemini enabled: `gemini-3.6-flash`, verification in manual_review mode)
+**LIVE URL and cloud credentials live in Vercel/Supabase dashboards and your
+password manager — never in this repo.** (Deployed 2026-08-23 on Vercel Hobby
+bom1 + Supabase Free ap-south-1, Gemini `gemini-3.6-flash`, verification in
+manual_review mode.)
 
 Redeploy: `cd app; vercel --prod --yes` (~40s).
 
