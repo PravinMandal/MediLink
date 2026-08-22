@@ -54,3 +54,5 @@ docs/research-findings.md
 docs/design-principles.md
 docs/overhaul/
 docs/
+app/scripts/shoot.mjs
+app/shots/
