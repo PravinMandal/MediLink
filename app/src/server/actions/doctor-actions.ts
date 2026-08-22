@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireUser, type SessionUser } from "@/server/session";
-import { access, AccessDeniedError } from "@/server/modules/access/guard";
+import { access, AccessDeniedError, EMERGENCY_SCOPES, scopeForResource } from "@/server/modules/access/guard";
 import {
-  getPractitionerForUser,
   submitPractitionerVerification,
   requireVerifiedPractitioner,
 } from "@/server/modules/identity/verification";
@@ -68,8 +68,19 @@ export async function addClinicalRecordAction(
 
   try {
     const practitioner = await requireVerifiedPractitioner(user.id);
-    // Doctors record with consent for the relevant scope (or emergency)
-    const scope = kind === "observation" ? "lab_results" : kind === "allergy" ? "allergies" : "conditions";
+    // Doctors write with consent for the scope governing that record kind —
+    // same mapping as reads (scopeForResource), never blanket "conditions".
+    const scope = scopeForResource(
+      kind === "observation"
+        ? "observations"
+        : kind === "allergy"
+          ? "allergies"
+          : kind === "medication"
+            ? "medication_statements"
+            : kind === "procedure"
+              ? "procedures"
+              : "conditions",
+    );
     await access.assert(guardUser(user), patientId, scope);
 
     const prov = {
@@ -225,70 +236,40 @@ export async function uploadDocumentAction(
       recordedDate,
     });
 
-    // Structured extraction from the real document text
-    if (doc?.textExtract) {
-      const extracted = await extraction.fromText(doc.textExtract);
-      if (extracted.labs.length || extracted.bloodGroup) {
-        const prov = {
-          authoredById: user.id,
-          organizationId: user.organizationId,
-          sourceDocumentId: doc.id,
-          trust: "extracted" as const,
-        };
-        await records.addObservations(
-          patientId,
-          extracted.labs.map((l) => ({
-            panel: l.panel,
-            name: l.name,
-            value: l.value ?? null,
-            valueString: l.valueString ?? null,
-            unit: l.unit ?? undefined,
-            referenceRangeLow: l.referenceRangeLow ?? null,
-            referenceRangeHigh: l.referenceRangeHigh ?? null,
-            flag: l.flag,
-            effectiveDate: recordedDate,
-          })),
-          prov,
-        );
-        if (extracted.bloodGroup) {
-          await records.addObservation(
+    // Structured extraction (PDF text + LLM + observation writes) runs
+    // AFTER the response — it can take tens of seconds with an LLM and must
+    // not block the action past serverless limits. The UI shows the
+    // document's extractionStatus chip (pending → done/failed).
+    if (doc) {
+      after(async () => {
+        try {
+          await runExtraction(doc.id, {
             patientId,
-            {
-              panel: "Blood Group",
-              name: "Blood Group",
-              valueString: extracted.bloodGroup,
-              effectiveDate: recordedDate,
-              flag: "normal" as const,
-            },
-            {
-              authoredById: user.id,
-              organizationId: user.organizationId,
-              sourceDocumentId: doc.id,
-              trust: "verified" as const,
-            },
-          );
-        }
-      }
-      if (doc.kind === "lab_report") {
-        await records.addDiagnosticReport(
-          patientId,
-          {
-            title,
-            category: "lab",
-            conclusion: extracted.reportTitle ?? undefined,
-            effectiveDate: recordedDate,
-          },
-          {
-            authoredById: user.id,
+            userId: user.id,
             organizationId: user.organizationId,
-            sourceDocumentId: doc.id,
-            trust: "verified" as const,
-          },
-        );
-      }
+            title,
+            kind: doc.kind,
+            recordedDate,
+          });
+        } catch {
+          const { db } = await import("@/server/db");
+          const { documents } = await import("@/server/db/schema");
+          const { eq } = await import("drizzle-orm");
+          await db
+            .update(documents)
+            .set({ extractionStatus: "failed" })
+            .where(eq(documents.id, doc.id))
+            .catch(() => undefined);
+        }
+        // M7: contradiction detection is post-processing — its failure must
+        // never be attributed to extraction (which already succeeded).
+        try {
+          await contradictionEngine.detect(patientId);
+        } catch (err) {
+          console.error("[contradictions] post-upload detection failed", err);
+        }
+      });
     }
-
-    await contradictionEngine.detect(patientId);
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
     const message = err instanceof Error ? err.message : "";
@@ -300,7 +281,86 @@ export async function uploadDocumentAction(
 
   revalidatePath(`/portal/doctor/patients/${patientId}`);
   revalidatePath("/portal/org");
-  return { ok: "Document stored with provenance; structured data extracted." };
+  return { ok: "Document stored with provenance; extraction is running." };
+}
+
+/** Shared post-upload extraction: text → structured rows → diagnostic report. */
+async function runExtraction(
+  documentId: string,
+  ctx: {
+    patientId: string;
+    userId: string;
+    organizationId: string | null;
+    title: string;
+    kind: string;
+    recordedDate?: string;
+  },
+) {
+  const { db } = await import("@/server/db");
+  const { documents } = await import("@/server/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const [doc] = await db
+    .select({ textExtract: documents.textExtract })
+    .from(documents)
+    .where(eq(documents.id, documentId));
+  if (!doc?.textExtract) return;
+
+  const extracted = await extraction.fromText(doc.textExtract);
+  if (extracted.labs.length || extracted.bloodGroup) {
+    const prov = {
+      authoredById: ctx.userId,
+      organizationId: ctx.organizationId,
+      sourceDocumentId: documentId,
+      // Extraction output is machine-read from document text — displayed,
+      // but never outranking a lab-verified value.
+      trust: "extracted" as const,
+    };
+    await records.addObservations(
+      ctx.patientId,
+      extracted.labs.map((l) => ({
+        panel: l.panel,
+        name: l.name,
+        value: l.value ?? null,
+        valueString: l.valueString ?? null,
+        unit: l.unit ?? undefined,
+        referenceRangeLow: l.referenceRangeLow ?? null,
+        referenceRangeHigh: l.referenceRangeHigh ?? null,
+        flag: l.flag,
+        effectiveDate: ctx.recordedDate,
+      })),
+      prov,
+    );
+    if (extracted.bloodGroup) {
+      await records.addObservation(
+        ctx.patientId,
+        {
+          panel: "Blood Group",
+          name: "Blood Group",
+          valueString: extracted.bloodGroup,
+          effectiveDate: ctx.recordedDate,
+          flag: "normal" as const,
+        },
+        prov,
+      );
+    }
+  }
+  if (ctx.kind === "lab_report") {
+    await records.addDiagnosticReport(
+      ctx.patientId,
+      {
+        title: ctx.title,
+        category: "lab",
+        conclusion: extracted.reportTitle ?? undefined,
+        effectiveDate: ctx.recordedDate,
+      },
+      {
+        authoredById: ctx.userId,
+        organizationId: ctx.organizationId,
+        sourceDocumentId: documentId,
+        trust: "extracted" as const,
+      },
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -317,8 +377,20 @@ export async function generateSummaryAction(
   if (!patientId) return { error: "Missing patient." };
 
   try {
-    await access.assert(guardUser(user), patientId, "*");
-    await summarizer.generate({ patientId, requestedById: user.id, question });
+    // "*" requires any active grant (or emergency); the decision's scopes
+    // then constrain the summary so a partial grant never yields a
+    // full-record SBAR.
+    const decision = await access.assert(guardUser(user), patientId, "*");
+    const granted =
+      decision.via === "emergency"
+        ? EMERGENCY_SCOPES
+        : decision.scopes;
+    await summarizer.generate({
+      patientId,
+      requestedById: user.id,
+      question,
+      scopes: decision.via === "self" ? null : granted,
+    });
     await audit.record({
       actorId: user.id,
       actorRole: user.role,
@@ -363,16 +435,9 @@ export async function breakGlassAction(
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
     if (err instanceof Error && err.message === "VERIFICATION_REQUIRED")
       return { error: "Only verified practitioners can use emergency access." };
-    if (err instanceof Error && err.message.length > 20)
-      return { error: err.message };
-    return { error: "A clinical reason is required." };
+    return { error: "A clinical reason of at least 10 characters is required." };
   }
 
   revalidatePath(`/portal/doctor/patients/${patientId}`);
   return { ok: "Break-glass active for 60 minutes. The patient has been notified." };
-}
-
-export async function loadEmergencyProfileAction(patientId: string): Promise<FormState> {
-  // Read path handled by the page; this exists for the action-form pattern.
-  return { ok: patientId };
 }

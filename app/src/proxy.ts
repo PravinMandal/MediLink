@@ -7,12 +7,17 @@ import type { NextRequest } from "next/server";
  * avoids rendering portal chrome for obviously-signed-out users.
  */
 const SESSION_COOKIE = "better-auth.session_token";
+// secureCookies (production) prefixes the cookie name.
+const COOKIE_NAMES = [
+  SESSION_COOKIE,
+  "__session-better-auth.session_token",
+  "__Secure-better-auth.session_token",
+  "__Host-better-auth.session_token",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession =
-    request.cookies.has(SESSION_COOKIE) ||
-    request.cookies.has("__session-better-auth.session_token");
+  const hasSession = COOKIE_NAMES.some((n) => request.cookies.has(n));
 
   if (!hasSession && pathname.startsWith("/portal")) {
     const url = new URL("/sign-in", request.url);

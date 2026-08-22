@@ -12,6 +12,7 @@ import {
   patients,
 } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
+import { access, EMERGENCY_SCOPES } from "@/server/modules/access/guard";
 import { notify } from "@/server/modules/notifications/service";
 import { records } from "@/server/modules/records/service";
 
@@ -34,6 +35,24 @@ export const emergency = {
       .where(eq(patients.id, input.patientId));
     if (!patient) throw new Error("Patient not found");
 
+    // A flagged (investigated as improper) break-glass on this patient by
+    // this practitioner blocks arming a new one — no indefinite renewal.
+    const [flagged] = await db
+      .select({ id: emergencyAccessEvents.id })
+      .from(emergencyAccessEvents)
+      .where(
+        and(
+          eq(emergencyAccessEvents.practitionerId, input.practitionerId),
+          eq(emergencyAccessEvents.patientId, input.patientId),
+          eq(emergencyAccessEvents.reviewStatus, "flagged"),
+        ),
+      );
+    if (flagged) {
+      throw new Error(
+        "A previous emergency access on this patient was flagged for review. Contact the platform administrator.",
+      );
+    }
+
     const now = new Date();
     const expiresAt = new Date(
       now.getTime() + BREAK_GLASS_WINDOW_MINUTES * 60 * 1000,
@@ -51,17 +70,25 @@ export const emergency = {
       })
       .returning();
 
-    await audit.record({
-      actorId: input.practitionerUserId,
-      actorRole: "doctor",
-      patientId: input.patientId,
-      organizationId: input.organizationId ?? null,
-      action: "emergency.break_glass",
-      resourceType: "emergency_access",
-      resourceId: event.id,
-      reason: input.reason.trim(),
-      metadata: { expiresAt: expiresAt.toISOString() },
-    });
+    // H3 tradeoff: the break-glass row is committed; an audit-append failure
+    // must not undo/contradict that (the doctor has access, the patient
+    // notification still goes out). Log loudly; record() already retries
+    // transient fork races internally.
+    try {
+      await audit.record({
+        actorId: input.practitionerUserId,
+        actorRole: "doctor",
+        patientId: input.patientId,
+        organizationId: input.organizationId ?? null,
+        action: "emergency.break_glass",
+        resourceType: "emergency_access",
+        resourceId: event.id,
+        reason: input.reason.trim(),
+        metadata: { expiresAt: expiresAt.toISOString() },
+      });
+    } catch (err) {
+      console.error("[audit] write failed (emergency.break_glass)", err);
+    }
 
     // Notify the patient (in-app; email/SMS adapters can subscribe later).
     if (patient.userId) {
@@ -81,8 +108,26 @@ export const emergency = {
     return event;
   },
 
-  /** The compact critical-information profile for emergency clinicians. */
-  async profile(patientId: string) {
+  /**
+   * The compact critical-information profile for emergency clinicians.
+   * Requires an authenticated caller with an active break-glass window (or
+   * patient self-access); every read is audited. Never callable bare.
+   */
+  async profile(
+    user: { id: string; role: "patient" | "doctor" | "lab_staff" | "org_admin" | "platform_admin"; organizationId?: string | null },
+    patientId: string,
+  ) {
+    const decision = await access.assert(user, patientId, EMERGENCY_SCOPES);
+    await audit.record({
+      actorId: user.id,
+      actorRole: user.role,
+      patientId,
+      action: "emergency.profile.viewed",
+      resourceType: "emergency_profile",
+      resourceId: patientId,
+      metadata: { via: decision.via },
+    });
+
     const [patient] = await db
       .select()
       .from(patients)

@@ -15,7 +15,7 @@ import { eq } from "drizzle-orm";
 import { GrantConsentForm, RevokeConsentButton, ScopeBadges } from "@/components/consent-forms";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Consents" };
+export const metadata: Metadata = { title: "Consents", description: "Grant, review, and revoke access to your medical record." };
 
 const STATUS_TONE: Record<string, "pine" | "neutral" | "amber"> = {
   active: "pine",

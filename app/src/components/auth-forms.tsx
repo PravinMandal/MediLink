@@ -3,40 +3,55 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { signInAction, signUpAction } from "@/server/actions/auth-actions";
-import { Field, Input, Badge } from "./ui";
-import { SubmitButton, CopyButton } from "./interactive";
+import { Field, Input, Badge, FormErrorSummary } from "./ui";
+import { SubmitButton, CopyButton, useFocusFirstError } from "./interactive";
 
 export function SignInForm({ next }: { next?: string }) {
   const [state, action] = useActionState(signInAction, {});
+  const formRef = useFocusFirstError(state.error);
+  const fieldErrors = {
+    email:
+      state.error === "Enter your email and password."
+        ? "Enter your email."
+        : state.error === "Email or password is incorrect."
+          ? "Email or password is incorrect."
+          : undefined,
+    password:
+      state.error === "Enter your email and password."
+        ? "Enter your password."
+        : state.error === "Email or password is incorrect."
+          ? "Email or password is incorrect."
+          : undefined,
+  };
 
   return (
-    <form action={action} className="space-y-4">
+    <form ref={formRef} action={action} className="space-y-4">
       <input type="hidden" name="next" value={next ?? ""} />
-      <Field label="Email" htmlFor="si-email">
+      <Field label="Email" htmlFor="si-email" error={fieldErrors.email}>
         <Input
           id="si-email"
           name="email"
           type="email"
           autoComplete="email"
           required
+          aria-invalid={fieldErrors.email ? true : undefined}
+          aria-describedby={fieldErrors.email ? "si-email-error" : undefined}
           placeholder="you@example.com"
         />
       </Field>
-      <Field label="Password" htmlFor="si-password">
+      <Field label="Password" htmlFor="si-password" error={fieldErrors.password}>
         <Input
           id="si-password"
           name="password"
           type="password"
           autoComplete="current-password"
           required
+          aria-invalid={fieldErrors.password ? true : undefined}
+          aria-describedby={fieldErrors.password ? "si-password-error" : undefined}
           placeholder="Your password…"
         />
       </Field>
-      {state.error ? (
-        <p role="alert" className="text-[13px] font-medium text-alert">
-          {state.error}
-        </p>
-      ) : null}
+      <FormErrorSummary errors={[state.error]} />
       <SubmitButton className="w-full" pendingLabel="Signing in…">
         Sign in
       </SubmitButton>
@@ -75,19 +90,34 @@ export function SignInForm({ next }: { next?: string }) {
   );
 }
 
+// Server-side signUpAction only registers patient/doctor; other roles are
+// granted by a platform admin after sign-up.
 const ROLES: Array<{ value: string; title: string; desc: string }> = [
   { value: "patient", title: "Patient", desc: "Own your lifetime record, control access" },
   { value: "doctor", title: "Doctor", desc: "Verified clinicians — read, contribute, summarize" },
-  { value: "lab_staff", title: "Lab staff", desc: "Upload authenticated reports" },
-  { value: "org_admin", title: "Facility admin", desc: "Manage a hospital, clinic or lab" },
 ];
 
 export function SignUpForm() {
   const [state, action] = useActionState(signUpAction, {});
   const [role, setRole] = useState("patient");
+  const formRef = useFocusFirstError(state.error);
+  const fieldErrors = {
+    name:
+      state.error === "Enter your name and email." ? "Enter your full name." : undefined,
+    email:
+      state.error === "Enter your name and email."
+        ? "Enter your email."
+        : state.error === "An account with this email already exists. Sign in instead."
+          ? "An account with this email already exists."
+          : undefined,
+    password:
+      state.error === "Password must be at least 8 characters."
+        ? "Password must be at least 8 characters."
+        : undefined,
+  };
 
   return (
-    <form action={action} className="space-y-4">
+    <form ref={formRef} action={action} className="space-y-4">
       <fieldset>
         <legend className="mb-2 block text-[13px] font-medium text-ink">
           I am joining as
@@ -116,13 +146,35 @@ export function SignUpForm() {
       </fieldset>
       <input type="hidden" name="role" value={role} />
 
-      <Field label="Full name" htmlFor="su-name">
-        <Input id="su-name" name="name" autoComplete="name" required placeholder="e.g. Rahul Sharma" />
+      <Field label="Full name" htmlFor="su-name" error={fieldErrors.name}>
+        <Input
+          id="su-name"
+          name="name"
+          autoComplete="name"
+          required
+          aria-invalid={fieldErrors.name ? true : undefined}
+          aria-describedby={fieldErrors.name ? "su-name-error" : undefined}
+          placeholder="e.g. Rahul Sharma"
+        />
       </Field>
-      <Field label="Email" htmlFor="su-email">
-        <Input id="su-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" />
+      <Field label="Email" htmlFor="su-email" error={fieldErrors.email}>
+        <Input
+          id="su-email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          aria-invalid={fieldErrors.email ? true : undefined}
+          aria-describedby={fieldErrors.email ? "su-email-error" : undefined}
+          placeholder="you@example.com"
+        />
       </Field>
-      <Field label="Password" htmlFor="su-password" hint="At least 8 characters.">
+      <Field
+        label="Password"
+        htmlFor="su-password"
+        hint="At least 8 characters."
+        error={fieldErrors.password}
+      >
         <Input
           id="su-password"
           name="password"
@@ -130,6 +182,10 @@ export function SignUpForm() {
           autoComplete="new-password"
           required
           minLength={8}
+          aria-invalid={fieldErrors.password ? true : undefined}
+          aria-describedby={
+            fieldErrors.password ? "su-password-error" : undefined
+          }
           placeholder="Create a password…"
         />
       </Field>
@@ -139,17 +195,8 @@ export function SignUpForm() {
           Doctor accounts submit council registration for verification after sign-up.
         </Badge>
       ) : null}
-      {role === "lab_staff" || role === "org_admin" ? (
-        <Badge tone="info">
-          Facility staff are attached to their organization after sign-up.
-        </Badge>
-      ) : null}
 
-      {state.error ? (
-        <p role="alert" className="text-[13px] font-medium text-alert">
-          {state.error}
-        </p>
-      ) : null}
+      <FormErrorSummary errors={[state.error]} />
       <SubmitButton className="w-full" pendingLabel="Creating account…">
         Create account
       </SubmitButton>

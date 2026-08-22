@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic";
 
+// Upload + after() extraction can exceed the 10s Hobby default; 60s is the
+// documented D8 function cap we budget for.
+export const maxDuration = 60;
+
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   PageHeader,
@@ -12,6 +15,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { ClaimLine } from "@/components/interactive";
+import { SectionTabs } from "@/components/section-tabs";
 import {
   GenerateSummaryForm,
   AddRecordForm,
@@ -30,7 +34,10 @@ import { audit } from "@/server/modules/audit/service";
 import { formatDate, cn, ageFrom } from "@/lib/utils";
 import type { ConsentScope } from "@/server/modules/consent/service";
 
-export const metadata: Metadata = { title: "Patient record" };
+export const metadata: Metadata = {
+  title: "Patient record",
+  description: "Consent-scoped patient record: summary, timeline, lab trends, and source documents.",
+};
 
 /* ---------------- Sparkline (deterministic SVG) ---------------- */
 
@@ -55,7 +62,14 @@ function Sparkline({
     const y = H - 5 - ((p.value - min) / span) * (H - 10);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  const last = points[points.length - 1];
+  const last = points[points.length - 1]!;
+  const first = points[0]!;
+  const direction =
+    last.value > first.value
+      ? "rising"
+      : last.value < first.value
+        ? "falling"
+        : "steady";
   const color =
     flag === "high" || flag === "critical"
       ? "var(--color-alert)"
@@ -63,30 +77,35 @@ function Sparkline({
         ? "var(--color-amber)"
         : "var(--color-pine)";
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width={W}
-      height={H}
-      role="img"
-      aria-label={`Trend: ${values.join(", ")} ${unit ?? ""}`}
-      className="overflow-visible"
-    >
-      <polyline
-        points={coords.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <circle
-        cx={coords[coords.length - 1].split(",")[0]}
-        cy={coords[coords.length - 1].split(",")[1]}
-        r="2.5"
-        fill={color}
-      />
-      <title>{`Latest ${last.value} ${unit ?? ""} (${formatDate(last.date, "short")})`}</title>
-    </svg>
+    <span className="inline-flex items-center">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
+        aria-hidden
+        className="overflow-visible"
+      >
+        <polyline
+          points={coords.join(" ")}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.75"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle
+          cx={coords[coords.length - 1]!.split(",")[0]}
+          cy={coords[coords.length - 1]!.split(",")[1]}
+          r="2.5"
+          fill={color}
+        />
+        <title>{`Latest ${last.value} ${unit ?? ""} (${formatDate(last.date, "short")})`}</title>
+      </svg>
+      <span className="sr-only">
+        Latest {last.value} {unit ?? ""} on {formatDate(last.date, "short")}, trend {direction}{" "}
+        over {points.length} values (from {first.value} to {last.value}).
+      </span>
+    </span>
   );
 }
 
@@ -149,15 +168,21 @@ export default async function DoctorPatientPage({
   }
 
   /* ---------- Audited view ---------- */
-  await audit.record({
-    actorId: user.id,
-    actorRole: user.role,
-    patientId: patient.id,
-    action: "patient.viewed",
-    resourceType: "patient",
-    resourceId: patient.id,
-    metadata: { via: decision.via },
-  });
+  // Audit only the initial view (no ?tab= param). Tab switches re-render
+  // this page server-side; auditing each would flood the trail without
+  // adding information — the first view already records this user opened
+  // this patient's record.
+  if (!rawTab) {
+    await audit.record({
+      actorId: user.id,
+      actorRole: user.role,
+      patientId: patient.id,
+      action: "patient.viewed",
+      resourceType: "patient",
+      resourceId: patient.id,
+      metadata: { via: decision.via },
+    });
+  }
 
   const scopes = decision.scopes;
   const can = (s: ConsentScope) => scopes.includes(s);
@@ -169,11 +194,13 @@ export default async function DoctorPatientPage({
 
   // Fetch only what the consent allows — never query what the grantee can't see.
   const [bloodGroup, allergies, meds, conds, summary, conflicts] = await Promise.all([
-    can("demographics") ? records.bloodGroup(patient.id) : null,
+    can("demographics") ? records.bloodGroup(patient.id, patient.bloodGroupSelfReported) : null,
     can("allergies") ? records.currentAllergies(patient.id) : [],
     can("medications") ? records.currentMedications(patient.id) : [],
     can("conditions") ? records.currentConditions(patient.id) : [],
-    summarizer.latestFor(patient.id),
+    // Scope-gated read: a stored summary from broader consent is not shown
+    // to a grantee with narrower scopes (decision D12).
+    summarizer.latestFor(patient.id, decision.scopes),
     contradictionEngine.openFor(patient.id),
   ]);
 
@@ -286,31 +313,24 @@ export default async function DoctorPatientPage({
       ) : null}
 
       {/* Tabs (URL-state) */}
-      <nav aria-label="Sections" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((t) => {
-          const allowed = viaEmergency ? t.scopes.every((s) => EMERGENCY_SCOPES.includes(s)) || t.scopes.length === 0 : true;
-          return (
-            <Link
-              key={t.key}
-              href={`/portal/doctor/patients/${patient.id}?tab=${t.key}`}
-              aria-current={tab === t.key ? "page" : undefined}
-              className={cn(
-                "-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
-                tab === t.key
-                  ? "border-pine text-pine-ink"
-                  : "border-transparent text-ink-soft hover:text-ink",
-                !allowed ? "pointer-events-none opacity-40" : "",
-              )}
-            >
-              {t.label}
-            </Link>
-          );
+      <SectionTabs
+        tabs={TABS.map((t) => {
+          const allowed = viaEmergency
+            ? t.scopes.every((s) => EMERGENCY_SCOPES.includes(s)) || t.scopes.length === 0
+            : true;
+          return {
+            key: t.key,
+            label: t.label,
+            href: `/portal/doctor/patients/${patient.id}?tab=${t.key}`,
+            allowed,
+            active: tab === t.key,
+          };
         })}
-      </nav>
+      />
 
       {/* ---------------- Summary tab ---------------- */}
       {tab === "summary" ? (
-        <div className="space-y-5">
+        <div role="tabpanel" aria-label="Summary" className="space-y-5">
           <Card>
             <CardHeader
               eyebrow="AI-generated summary"
@@ -374,19 +394,30 @@ export default async function DoctorPatientPage({
       ) : null}
 
       {/* ---------------- Timeline tab ---------------- */}
-      {tab === "timeline" ? <TimelineSection patientId={patient.id} scopes={scopes} /> : null}
+      {tab === "timeline" ? (
+        <div role="tabpanel" aria-label="Timeline">
+          <TimelineSection patientId={patient.id} scopes={scopes} />
+        </div>
+      ) : null}
 
       {/* ---------------- Labs tab ---------------- */}
-      {tab === "labs" ? <LabsSection patientId={patient.id} allowed={can("lab_results")} /> : null}
+      {tab === "labs" ? (
+        <div role="tabpanel" aria-label="Labs and trends">
+          <LabsSection patientId={patient.id} allowed={can("lab_results")} />
+        </div>
+      ) : null}
 
       {/* ---------------- Documents tab ---------------- */}
       {tab === "documents" ? (
-        <DocumentsSection patientId={patient.id} allowed={can("documents")} />
+        <div role="tabpanel" aria-label="Documents">
+          <DocumentsSection patientId={patient.id} allowed={can("documents")} />
+        </div>
       ) : null}
 
       {/* ---------------- Contribute tab ---------------- */}
       {tab === "contribute" ? (
-        practitioner?.verificationStatus === "verified" ? (
+        <div role="tabpanel" aria-label="Add or upload">
+        {practitioner?.verificationStatus === "verified" ? (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <Card>
               <CardHeader
@@ -405,7 +436,8 @@ export default async function DoctorPatientPage({
           <Alert tone="amber" title="Verification required">
             Only verified practitioners can contribute records.
           </Alert>
-        )
+        )}
+        </div>
       ) : null}
     </>
   );
@@ -420,7 +452,7 @@ async function TimelineSection({
   patientId: string;
   scopes: string[];
 }) {
-  const events = await records.timeline(patientId);
+  const events = await records.timeline(patientId, { scopes });
   const visible = events.filter((e) => {
     const map: Record<string, string> = {
       condition: "conditions",

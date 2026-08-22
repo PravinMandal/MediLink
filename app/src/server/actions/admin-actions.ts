@@ -87,3 +87,89 @@ export async function verifyAuditChainAction(): Promise<FormState & { brokenAt?:
     return { error: "Could not verify the chain." };
   }
 }
+
+/**
+ * D2 remainder: professional roles are granted only by a platform admin.
+ * platform_admin itself can never be granted through this flow.
+ */
+const GRANTABLE_ROLES = new Set(["doctor", "lab_staff", "org_admin"]);
+
+export async function setUserRoleAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const admin = await requireAdmin();
+    const targetUserId = String(formData.get("userId") ?? "").trim();
+    const role = String(formData.get("role") ?? "").trim();
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (!targetUserId) return { error: "Choose a user." };
+    if (!reason) return { error: "A reason is required for role grants." };
+
+    await setUserRole({
+      actorId: admin.id,
+      targetUserId,
+      role,
+      reason,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    if (err instanceof Error && err.message === "ACCESS_DENIED") {
+      return { error: "Only platform admins can grant roles." };
+    }
+    if (err instanceof Error && err.message === "INVALID_ROLE") {
+      return { error: "That role cannot be granted." };
+    }
+    if (err instanceof Error && err.message === "USER_NOT_FOUND") {
+      return { error: "User not found." };
+    }
+    return { error: "Role grant failed." };
+  }
+  revalidatePath("/portal/admin");
+  return { ok: "Role granted." };
+}
+
+export async function setUserRole(input: {
+  actorId: string;
+  targetUserId: string;
+  role: string;
+  reason: string;
+}): Promise<void> {
+  // Re-assert the actor's CURRENT role from the database — the session
+  // cookie alone must never authorize (same principle as getSessionUser).
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("@/server/db");
+  const { user: userTable } = await import("@/server/db/schema");
+  const [actor] = await db
+    .select({ id: userTable.id, role: userTable.role })
+    .from(userTable)
+    .where(eq(userTable.id, input.actorId))
+    .limit(1);
+  if (!actor || actor.role !== "platform_admin") {
+    throw new Error("ACCESS_DENIED");
+  }
+  if (!GRANTABLE_ROLES.has(input.role)) {
+    // platform_admin elevation is never allowed through this flow
+    throw new Error("INVALID_ROLE");
+  }
+  await db
+    .update(userTable)
+    .set({ role: input.role as "doctor" | "lab_staff" | "org_admin" })
+    .where(eq(userTable.id, input.targetUserId));
+  const [target] = await db
+    .select({ id: userTable.id })
+    .from(userTable)
+    .where(eq(userTable.id, input.targetUserId))
+    .limit(1);
+  if (!target) throw new Error("USER_NOT_FOUND");
+
+  await audit.record({
+    actorId: input.actorId,
+    actorRole: "platform_admin",
+    action: "user.role.granted",
+    resourceType: "user",
+    resourceId: input.targetUserId,
+    reason: input.reason,
+    metadata: { role: input.role },
+  });
+}

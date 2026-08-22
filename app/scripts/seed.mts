@@ -47,12 +47,19 @@ async function main() {
         email,
         password: PASSWORD,
         name,
-        role,
         ...(extra ?? {}),
       } as never,
     });
     const id = (res as { user?: { id: string } }).user?.id;
     if (!id) throw new Error(`Failed to create user ${email}`);
+    // role is input:false in auth config (signups are patients by default);
+    // seeding grants professional roles directly, mirroring admin grants.
+    if (role !== "patient") {
+      await db
+        .update(schema.user)
+        .set({ role: role as typeof schema.user.$inferSelect.role })
+        .where(sql`${schema.user.id} = ${id}`);
+    }
     return id;
   }
 
@@ -115,7 +122,7 @@ async function main() {
     specialty: "Internal Medicine",
     organizationId: cityGeneral.organization.id,
   });
-  const arjun = await identity.submitPractitionerVerification({
+  await identity.submitPractitionerVerification({
     userId: arjunUserId,
     fullName: "Dr. Arjun Rao",
     registrationNumber: "KMC/2012/31088",
@@ -328,6 +335,10 @@ Advice: cardiac rehab, review 6 weeks.`,
       );
     }
     if (extracted.bloodGroup) {
+      // H4: extraction output is machine-read text → "extracted" (matches
+      // runtime doctor-actions). The golden conflict demo (self-reported O+
+      // vs lab B+) needs a *verified* lab value, so seed an explicit
+      // practitioner-verified observation exactly like a real lab result.
       await records.addObservation(
         rahul.id,
         {
@@ -340,7 +351,6 @@ Advice: cardiac rehab, review 6 weeks.`,
         {
           authoredById: labUserId,
           organizationId: sunrise.organization.id,
-          sourceDocumentId: doc.id,
           trust: "verified" as const,
           recordedAt: new Date(report.date),
         },

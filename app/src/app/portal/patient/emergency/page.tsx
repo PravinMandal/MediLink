@@ -8,7 +8,7 @@ import { records } from "@/server/modules/records/service";
 import { EmergencyProfileForm } from "@/components/patient-forms";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Emergency profile" };
+export const metadata: Metadata = { title: "Emergency profile", description: "Critical information available to doctors via audited emergency access." };
 
 export default async function EmergencyProfile() {
   const user = await requireUser();
@@ -49,7 +49,7 @@ export default async function EmergencyProfile() {
                 </dd>
               </div>
               {bloodGroup.conflict ? (
-                <div className="bg-alert-tint px-4 py-2 text-[12px] text-alert sm:px-5">
+                <div role="note" className="bg-alert-tint px-4 py-2 text-[12px] text-alert sm:px-5">
                   ⚠ Self-reported ({bloodGroup.selfReported}) conflicts with the verified lab value
                   above — the verified value is shown to doctors.
                 </div>

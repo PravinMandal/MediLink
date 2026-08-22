@@ -22,7 +22,8 @@ const ALLOWED_MIME = new Set([
   "text/plain",
 ]);
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+// 4 MB — below Vercel Hobby's 4.5 MB request-body cap (D1)
+const MAX_BYTES = 4 * 1024 * 1024;
 
 export class IngestError extends Error {}
 
@@ -63,7 +64,7 @@ export async function ingestDocument(input: {
     throw new IngestError(`Unsupported file type: ${input.mimeType}`);
   }
   if (input.bytes.byteLength > MAX_BYTES) {
-    throw new IngestError("File exceeds 20 MB limit");
+    throw new IngestError("File exceeds 4 MB limit");
   }
 
   const hash = contentHash(input.bytes);
@@ -91,15 +92,21 @@ export async function ingestDocument(input: {
     })
     .returning();
 
-  await audit.record({
-    actorId: input.uploadedById,
-    patientId: input.patientId,
-    organizationId: input.organizationId ?? null,
-    action: "document.uploaded",
-    resourceType: "document",
-    resourceId: doc.id,
-    metadata: { title: input.title, kind: input.kind, hash, size: input.bytes.byteLength },
-  });
+  // H3 tradeoff: the document row is committed; an audit-append failure must
+  // not fail the upload (extraction and indexing still proceed). Log loudly.
+  try {
+    await audit.record({
+      actorId: input.uploadedById,
+      patientId: input.patientId,
+      organizationId: input.organizationId ?? null,
+      action: "document.uploaded",
+      resourceType: "document",
+      resourceId: doc.id,
+      metadata: { title: input.title, kind: input.kind, hash, size: input.bytes.byteLength },
+    });
+  } catch (err) {
+    console.error("[audit] write failed (document.uploaded)", err);
+  }
 
   // Extraction + indexing (inline; safe to retry)
   try {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EvidenceCard } from "@/components/marketing/evidence-card";
+import { RecordJourneySection } from "@/components/marketing/record-journey-section";
 import { Reveal } from "@/components/marketing/reveal";
 
 /**
@@ -174,6 +175,9 @@ export default function MarketingHome() {
         </div>
       </section>
 
+      {/* ---------------- Record journey — scroll-driven 3D (D9) --------- */}
+      <RecordJourneySection />
+
       {/* ---------------- Signature: the evidence chain ---------------- */}
       <section aria-label="Provenance" className="border-b border-line">
         <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:py-24">
@@ -209,7 +213,7 @@ export default function MarketingHome() {
           <Reveal delay={120}>
             <div className="card p-6 sm:p-8">
               <p className="eyebrow mb-4">One record, as MediLink keeps it</p>
-              <div className="space-y-3 text-[13px]">
+              <dl className="space-y-3 text-[13px]">
                 {[
                   ["Record", "Serum Creatinine — 2.0 mg/dL", "num text-ink"],
                   ["Author", "Priya Kulkarni · Sunrise Diagnostics", "text-ink-soft"],
@@ -227,7 +231,7 @@ export default function MarketingHome() {
                     <dd className={cls}>{v}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </div>
           </Reveal>
         </div>

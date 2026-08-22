@@ -7,6 +7,12 @@ export default function MarketingLayout({
 }) {
   return (
     <div className="min-h-dvh">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:border focus:border-pine focus:bg-paper-raised focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-pine"
+      >
+        Skip to main content
+      </a>
       <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5" aria-label="MediLink home">
@@ -49,7 +55,7 @@ export default function MarketingLayout({
         </div>
       </header>
 
-      <main>{children}</main>
+      <main id="main">{children}</main>
 
       <footer className="border-t border-line bg-paper-sunk">
         <div className="mx-auto grid max-w-6xl gap-6 px-5 py-10 sm:grid-cols-3 sm:px-8">

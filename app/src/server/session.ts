@@ -12,15 +12,18 @@ export type SessionUser = User & {
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return null;
-  const u = session.user as unknown as Record<string, unknown>;
-  return {
-    ...session.user,
-    role: (u.role as User["role"]) ?? "patient",
-    phone: (u.phone as string | null) ?? null,
-    organizationId: (u.organizationId as string | null) ?? null,
-    verificationStatus:
-      (u.verificationStatus as User["verificationStatus"]) ?? "unverified",
-  } as SessionUser;
+  // Re-read the user row: role/org/verification may have been revoked or
+  // granted mid-session; the session cookie alone must never authorize.
+  const { db } = await import("./db");
+  const { user: userTable } = await import("./db/schema");
+  const { eq } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(userTable)
+    .where(eq(userTable.id, session.user.id))
+    .limit(1);
+  if (!row) return null;
+  return { ...row, email: row.email } as SessionUser;
 });
 
 /** Throws to the sign-in page if unauthenticated. */

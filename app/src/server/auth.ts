@@ -33,7 +33,10 @@ export const auth = betterAuth({
         type: "string",
         required: true,
         defaultValue: "patient",
-        input: true, // chosen at sign-up
+        // Self-signup always creates a patient; professional roles are set
+        // only through signUpAction's post-creation update (patient|doctor)
+        // or by a platform admin. input:false blocks direct API injection.
+        input: false,
       },
       phone: {
         type: "string",
@@ -58,6 +61,8 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // refresh daily
   },
   advanced: {
+    // Session cookies are HTTPS-only in production (Vercel always serves TLS).
+    secureCookies: process.env.NODE_ENV === "production",
     // IP/User-Agent are captured on the session row for audit context
     ipAddress: { ipAddressHeaders: ["x-forwarded-for"], disableIpTracking: false },
   },

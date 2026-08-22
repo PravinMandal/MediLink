@@ -48,7 +48,13 @@ export async function grantConsentAction(
   if (!patient) return { error: "No patient record linked to this account." };
 
   const granteeId = String(formData.get("granteeId") ?? "");
-  const days = Math.min(Math.max(Number(formData.get("days") ?? 7), 1), 365);
+  // M2: NaN or non-numeric input must fall back to the default, not clamp
+  // into NaN (Math.min(NaN,...) → NaN → 1-day grant via later NaN quirks).
+  const rawDays = Number(formData.get("days") ?? 7);
+  const days = Math.min(
+    Math.max(Number.isFinite(rawDays) ? rawDays : 7, 1),
+    365,
+  );
   const purpose = String(formData.get("purpose") ?? "treatment") as
     | "treatment"
     | "consultation"
@@ -67,7 +73,6 @@ export async function grantConsentAction(
         "imaging",
         "procedures",
         "documents",
-        "sensitive",
       ].includes(s),
     );
 

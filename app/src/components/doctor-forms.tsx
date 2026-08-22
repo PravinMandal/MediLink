@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   addClinicalRecordAction,
   uploadDocumentAction,
@@ -9,8 +9,8 @@ import {
 } from "@/server/actions/doctor-actions";
 import { requestAccessAction } from "@/server/actions/patient-actions";
 import { submitVerificationAction } from "@/server/actions/doctor-actions";
-import { Field, Input, Select, Textarea, Badge } from "./ui";
-import { SubmitButton } from "./interactive";
+import { Field, Input, Select, Textarea, Badge, FormErrorSummary } from "./ui";
+import { SubmitButton, useFocusFirstError } from "./interactive";
 
 function StateLine({ state }: { state: { error?: string; ok?: string } }) {
   return (
@@ -31,14 +31,44 @@ function StateLine({ state }: { state: { error?: string; ok?: string } }) {
 
 export function VerificationForm() {
   const [state, action] = useActionState(submitVerificationAction, {});
+  const formRef = useFocusFirstError(state.error);
+  const fieldErrors = {
+    fullName:
+      state.error === "Could not submit verification. Check the fields and try again."
+        ? "Enter your full registered name."
+        : undefined,
+    registrationNumber:
+      state.error === "Could not submit verification. Check the fields and try again."
+        ? "Enter your council registration number."
+        : undefined,
+  };
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
-      <Field label="Full name as registered" htmlFor="v-name">
-        <Input id="v-name" name="fullName" required placeholder="Dr. Meera Iyer" />
+    <form ref={formRef} action={action} className="space-y-4 px-4 py-4 sm:px-5">
+      <Field label="Full name as registered" htmlFor="v-name" error={fieldErrors.fullName}>
+        <Input
+          id="v-name"
+          name="fullName"
+          required
+          aria-invalid={fieldErrors.fullName ? true : undefined}
+          aria-describedby={fieldErrors.fullName ? "v-name-error" : undefined}
+          placeholder="Dr. Meera Iyer"
+        />
       </Field>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Council registration number" htmlFor="v-reg" hint="e.g. MMC/2010/45231">
-          <Input id="v-reg" name="registrationNumber" required placeholder="MMC/YYYY/NNNNN" />
+        <Field
+          label="Council registration number"
+          htmlFor="v-reg"
+          hint="e.g. MMC/2010/45231"
+          error={fieldErrors.registrationNumber}
+        >
+          <Input
+            id="v-reg"
+            name="registrationNumber"
+            required
+            aria-invalid={fieldErrors.registrationNumber ? true : undefined}
+            aria-describedby={fieldErrors.registrationNumber ? "v-reg-error" : undefined}
+            placeholder="MMC/YYYY/NNNNN"
+          />
         </Field>
         <Field label="State medical council" htmlFor="v-council">
           <Input id="v-council" name="council" placeholder="Maharashtra Medical Council" />
@@ -52,7 +82,7 @@ export function VerificationForm() {
           <Input id="v-spec" name="specialty" placeholder="Cardiology" />
         </Field>
       </div>
-      <StateLine state={state} />
+      <FormErrorSummary errors={[state.error]} />
       <SubmitButton pendingLabel="Submitting…">Submit for verification</SubmitButton>
     </form>
   );
@@ -86,6 +116,54 @@ export function RequestAccessForm({ patientId }: { patientId: string }) {
 export function BreakGlassForm({ patientId }: { patientId: string }) {
   const [state, action] = useActionState(breakGlassAction, {});
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const reasonError =
+    state.error === "A clinical reason of at least 10 characters is required."
+      ? state.error
+      : undefined;
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    const opener = document.activeElement as HTMLElement | null;
+    dialog?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !dialog) return;
+      // Focus trap: cycle within the dialog
+      const focusables = dialog.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+      );
+      if (!focusables.length) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      opener?.focus?.();
+    };
+  }, [open]);
+
+  if (state.ok) {
+    return (
+      <div role="status" className="rounded-lg border border-alert bg-alert-tint px-4 py-4">
+        <p className="text-sm font-semibold text-alert">{state.ok}</p>
+      </div>
+    );
+  }
 
   if (!open) {
     return (
@@ -104,37 +182,52 @@ export function BreakGlassForm({ patientId }: { patientId: string }) {
   }
 
   return (
-    <form
-      action={action}
-      className="space-y-3 rounded-lg border border-alert bg-alert-tint px-4 py-4"
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bg-title"
+      tabIndex={-1}
+      className="space-y-3 rounded-lg border border-alert bg-alert-tint px-4 py-4 focus:outline-none"
     >
-      <input type="hidden" name="patientId" value={patientId} />
-      <p className="text-sm font-semibold text-alert">
-        State the clinical reason for emergency access
-      </p>
-      <Textarea
-        name="reason"
-        required
-        minLength={10}
-        rows={3}
-        placeholder="e.g. Unconscious patient after RTA; need allergies and anticoagulants before surgery"
-        className="border-alert/40"
-        aria-label="Clinical reason for emergency access"
-      />
-      <StateLine state={state} />
-      <div className="flex gap-2">
-        <SubmitButton variant="danger" pendingLabel="Breaking glass…">
-          Confirm break-glass
-        </SubmitButton>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="cursor-pointer rounded-md px-3 text-[13px] font-medium text-ink-soft hover:text-ink"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+      <form action={action} className="space-y-3">
+        <input type="hidden" name="patientId" value={patientId} />
+        <p id="bg-title" className="text-sm font-semibold text-alert">
+          State the clinical reason for emergency access
+        </p>
+        <Textarea
+          name="reason"
+          required
+          minLength={10}
+          rows={3}
+          placeholder="e.g. Unconscious patient after RTA; need allergies and anticoagulants before surgery"
+          className="border-alert/40"
+          aria-label="Clinical reason for emergency access"
+          aria-invalid={reasonError ? true : undefined}
+          aria-describedby={reasonError ? "bg-reason-error" : undefined}
+        />
+        {reasonError ? (
+          <p id="bg-reason-error" className="text-xs font-medium text-alert">
+            {reasonError}
+          </p>
+        ) : null}
+        {state.error && !reasonError ? (
+          <p role="alert" className="text-[13px] font-medium text-alert">{state.error}</p>
+        ) : null}
+        <div className="flex gap-2">
+          <SubmitButton variant="danger" pendingLabel="Breaking glass…">
+            Confirm break-glass
+          </SubmitButton>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="cursor-pointer rounded-md px-3 text-[13px] font-medium text-ink-soft hover:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -153,9 +246,16 @@ const RECORD_KINDS = [
 export function AddRecordForm({ patientId }: { patientId: string }) {
   const [state, action] = useActionState(addClinicalRecordAction, {});
   const [kind, setKind] = useState("condition");
+  const formRef = useFocusFirstError(state.error);
+
+  // Server rejects missing names per kind — surface it on that field.
+  const nameError =
+    state.error?.endsWith("name is required.") || state.error?.endsWith("substance is required.")
+      ? state.error
+      : undefined;
 
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
+    <form ref={formRef} action={action} className="space-y-4 px-4 py-4 sm:px-5">
       <input type="hidden" name="patientId" value={patientId} />
       <input type="hidden" name="kind" value={kind} />
       <div role="tablist" aria-label="Record type" className="flex flex-wrap gap-1.5">
@@ -180,8 +280,15 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 
       {kind === "condition" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Condition" htmlFor="r-name">
-            <Input id="r-name" name="name" required placeholder="e.g. Type 2 diabetes mellitus" />
+          <Field label="Condition" htmlFor="r-name" error={nameError}>
+            <Input
+              id="r-name"
+              name="name"
+              required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? "r-name-error" : undefined}
+              placeholder="e.g. Type 2 diabetes mellitus"
+            />
           </Field>
           <Field label="Status" htmlFor="r-status">
             <Select id="r-status" name="status" defaultValue="active">
@@ -201,8 +308,15 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 
       {kind === "allergy" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="Substance" htmlFor="r-sub">
-            <Input id="r-sub" name="substance" required placeholder="e.g. Penicillin" />
+          <Field label="Substance" htmlFor="r-sub" error={nameError}>
+            <Input
+              id="r-sub"
+              name="substance"
+              required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? "r-sub-error" : undefined}
+              placeholder="e.g. Penicillin"
+            />
           </Field>
           <Field label="Criticality" htmlFor="r-crit">
             <Select id="r-crit" name="criticality" defaultValue="">
@@ -220,8 +334,15 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 
       {kind === "medication" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Medication" htmlFor="r-med">
-            <Input id="r-med" name="medication" required placeholder="e.g. Metformin" />
+          <Field label="Medication" htmlFor="r-med" error={nameError}>
+            <Input
+              id="r-med"
+              name="medication"
+              required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? "r-med-error" : undefined}
+              placeholder="e.g. Metformin"
+            />
           </Field>
           <Field label="Dose" htmlFor="r-dose">
             <Input id="r-dose" name="dose" placeholder="e.g. 500 mg" />
@@ -237,8 +358,15 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 
       {kind === "observation" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Test name" htmlFor="r-obs">
-            <Input id="r-obs" name="name" required placeholder="e.g. Serum Creatinine" />
+          <Field label="Test name" htmlFor="r-obs" error={nameError}>
+            <Input
+              id="r-obs"
+              name="name"
+              required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? "r-obs-error" : undefined}
+              placeholder="e.g. Serum Creatinine"
+            />
           </Field>
           <Field label="Value" htmlFor="r-val">
             <Input id="r-val" name="value" inputMode="decimal" placeholder="e.g. 1.4" />
@@ -254,8 +382,15 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 
       {kind === "procedure" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Procedure" htmlFor="r-proc">
-            <Input id="r-proc" name="name" required placeholder="e.g. Coronary angiography" />
+          <Field label="Procedure" htmlFor="r-proc" error={nameError}>
+            <Input
+              id="r-proc"
+              name="name"
+              required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? "r-proc-error" : undefined}
+              placeholder="e.g. Coronary angiography"
+            />
           </Field>
           <Field label="Date" htmlFor="r-pdate">
             <Input id="r-pdate" name="performedDate" type="date" />
@@ -269,7 +404,10 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
       <p className="text-xs text-ink-faint">
         Recorded with your provenance: name, organization, timestamp, and hash-chained audit.
       </p>
-      <StateLine state={state} />
+      <FormErrorSummary errors={[state.error]} />
+      {state.ok ? (
+        <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
+      ) : null}
       <SubmitButton pendingLabel="Saving…">Add record</SubmitButton>
     </form>
   );
@@ -279,14 +417,46 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
 /* Upload document                                                     */
 /* ------------------------------------------------------------------ */
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const OVERSIZE_FILE_ERROR =
+  "File is larger than 4 MB — compress or split the PDF.";
+
 export function UploadDocumentForm({ patientId }: { patientId: string }) {
   const [state, action] = useActionState(uploadDocumentAction, {});
+  const formRef = useFocusFirstError(state.error);
+  const [fileError, setFileError] = useState<string | undefined>(undefined);
+  const fileErrorId = "u-file-oversize";
+  const fieldErrors = {
+    title: state.error === "Give the document a title." ? state.error : undefined,
+    file:
+      fileError ??
+      (state.error === "Choose a file to upload." ? state.error : undefined),
+  };
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
+    <form
+      ref={formRef}
+      action={action}
+      onSubmit={(e) => {
+        const file = (e.currentTarget.elements.namedItem("file") as HTMLInputElement)
+          ?.files?.[0];
+        if (file && file.size > MAX_UPLOAD_BYTES) {
+          e.preventDefault();
+          setFileError(OVERSIZE_FILE_ERROR);
+        }
+      }}
+      className="space-y-4 px-4 py-4 sm:px-5"
+    >
       <input type="hidden" name="patientId" value={patientId} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Title" htmlFor="u-title">
-          <Input id="u-title" name="title" required placeholder="e.g. HbA1c — Apr 2026" />
+        <Field label="Title" htmlFor="u-title" error={fieldErrors.title}>
+          <Input
+            id="u-title"
+            name="title"
+            required
+            aria-invalid={fieldErrors.title ? true : undefined}
+            aria-describedby={fieldErrors.title ? "u-title-error" : undefined}
+            placeholder="e.g. HbA1c — Apr 2026"
+          />
         </Field>
         <Field label="Type" htmlFor="u-kind">
           <Select id="u-kind" name="kind" defaultValue="lab_report">
@@ -301,12 +471,28 @@ export function UploadDocumentForm({ patientId }: { patientId: string }) {
         <Field label="Report date" htmlFor="u-date">
           <Input id="u-date" name="recordedDate" type="date" />
         </Field>
-        <Field label="File (PDF, image or text · ≤ 20 MB)" htmlFor="u-file">
+        <Field
+          label="File (PDF, image or text · ≤ 4 MB)"
+          htmlFor="u-file"
+          error={fieldErrors.file}
+        >
           <input
             id="u-file"
             name="file"
             type="file"
             required
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              setFileError(
+                file && file.size > MAX_UPLOAD_BYTES ? OVERSIZE_FILE_ERROR : undefined,
+              );
+            }}
+            aria-invalid={fieldErrors.file ? true : undefined}
+            aria-describedby={
+              [fieldErrors.file ? "u-file-error" : null, fileError ? fileErrorId : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/*,text/plain"
             className="w-full cursor-pointer rounded-md border border-line-strong bg-paper-raised px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-pine-tint file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-pine-ink"
           />
@@ -316,7 +502,10 @@ export function UploadDocumentForm({ patientId }: { patientId: string }) {
         The original is preserved byte-for-byte (SHA-256 hashed); lab values are extracted into
         structured, trend-able data.
       </p>
-      <StateLine state={state} />
+      <FormErrorSummary errors={[state.error]} />
+      {state.ok ? (
+        <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
+      ) : null}
       <SubmitButton pendingLabel="Uploading & extracting…">Upload</SubmitButton>
     </form>
   );
@@ -344,7 +533,10 @@ export function GenerateSummaryForm({
       >
         <Input id="s-q" name="question" placeholder="Summarize everything · or focus on…" />
       </Field>
-      <StateLine state={state} />
+      <FormErrorSummary errors={[state.error]} />
+      {state.ok ? (
+        <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
+      ) : null}
       <div className="flex items-center gap-3">
         <SubmitButton pendingLabel="Generating…">
           {hasSummary ? "Regenerate summary" : "Generate summary"}

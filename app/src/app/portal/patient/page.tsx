@@ -10,7 +10,7 @@ import { notify } from "@/server/modules/notifications/service";
 import { audit } from "@/server/modules/audit/service";
 import { formatDate, formatTime, TRUST_LABEL } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = { title: "Dashboard", description: "Overview of your record: blood group, allergies, medications, and recent activity." };
 
 export default async function PatientDashboard() {
   const user = await requireUser();

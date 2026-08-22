@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 export interface StorageAdapter {
   readonly name: string;
@@ -17,12 +17,30 @@ export interface StorageAdapter {
   delete(key: string): Promise<void>;
 }
 
+/**
+ * Storage keys are always "<patientId>/<docId>" UUIDs. Structural validation
+ * plus a resolved-path prefix check — string scrubbing alone is bypassable.
+ */
+const KEY_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function assertValidKey(key: string): string {
+  if (!KEY_SHAPE.test(key)) throw new Error("Invalid storage key");
+  return key;
+}
+
 class LocalStorage implements StorageAdapter {
   readonly name = "local";
   private baseDir = ".uploads";
 
-  private path(key: string) {
-    return join(this.baseDir, key.replace(/\.\./g, "").replace(/\\/g, "/"));
+  private path(key: string): string {
+    assertValidKey(key);
+    const resolved = resolve(join(this.baseDir, key));
+    // Defense in depth: the resolved path must stay inside the base dir.
+    const base = resolve(this.baseDir);
+    if (resolved !== base && !resolved.startsWith(base + sep)) {
+      throw new Error("Storage path escapes base directory");
+    }
+    return resolved;
   }
 
   async put(key: string, bytes: Uint8Array): Promise<void> {
@@ -60,7 +78,7 @@ class SupabaseStorage implements StorageAdapter {
 
   async put(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
     const res = await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(key)}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
       {
         method: "POST",
         headers: { ...this.headers(), "Content-Type": contentType },
@@ -74,7 +92,7 @@ class SupabaseStorage implements StorageAdapter {
 
   async get(key: string): Promise<Uint8Array> {
     const res = await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(key)}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
       { headers: this.headers() },
     );
     if (!res.ok) throw new Error(`Supabase storage get failed: ${res.status}`);
@@ -83,7 +101,7 @@ class SupabaseStorage implements StorageAdapter {
 
   async delete(key: string): Promise<void> {
     await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(key)}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
       { method: "DELETE", headers: this.headers() },
     );
   }
@@ -97,6 +115,14 @@ export function getStorage(): StorageAdapter {
       url,
       key,
       process.env.SUPABASE_STORAGE_BUCKET?.trim() || "medical-documents",
+    );
+  }
+  // Local disk is development-only: Vercel's filesystem is read-only/ephemeral.
+  // Fail loudly at first use in production instead of silently losing files.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in production " +
+        "(local disk storage is unavailable on serverless hosting).",
     );
   }
   return new LocalStorage();

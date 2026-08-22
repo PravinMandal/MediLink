@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   grantConsentAction,
   revokeConsentAction,
 } from "@/server/actions/patient-actions";
-import { Field, Input, Select, Badge } from "./ui";
-import { SubmitButton } from "./interactive";
+import { Field, Input, Select, Badge, FormErrorSummary } from "./ui";
+import { SubmitButton, useFocusFirstError } from "./interactive";
 
 export type GranteeOption = {
   id: string;
@@ -23,7 +24,6 @@ const SCOPES: Array<{ value: string; label: string; default?: boolean }> = [
   { value: "imaging", label: "Imaging & radiology" },
   { value: "procedures", label: "Procedures & surgeries", default: true },
   { value: "documents", label: "Source documents" },
-  { value: "sensitive", label: "Sensitive records" },
 ];
 
 export function GrantConsentForm({
@@ -34,11 +34,29 @@ export function GrantConsentForm({
   organizations: GranteeOption[];
 }) {
   const [state, action] = useActionState(grantConsentAction, {});
+  const formRef = useFocusFirstError(state.error);
+  const granteeError =
+    state.error === "Choose a doctor or facility and at least one data category."
+      ? "Choose a verified doctor or facility."
+      : state.error === "Practitioner not found." || state.error === "Organization not found." || state.error === "Invalid grantee."
+        ? state.error
+        : undefined;
+  const scopesError =
+    state.error === "Choose a doctor or facility and at least one data category."
+      ? "Select at least one data category."
+      : undefined;
 
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
-      <Field label="Grant access to" htmlFor="granteeId">
-        <Select id="granteeId" name="granteeId" required defaultValue="">
+    <form ref={formRef} action={action} className="space-y-4 px-4 py-4 sm:px-5">
+      <Field label="Grant access to" htmlFor="granteeId" error={granteeError}>
+        <Select
+          id="granteeId"
+          name="granteeId"
+          required
+          aria-invalid={granteeError ? true : undefined}
+          aria-describedby={granteeError ? "granteeId-error" : undefined}
+          defaultValue=""
+        >
           <option value="" disabled>
             Choose a verified doctor or facility…
           </option>
@@ -99,9 +117,7 @@ export function GrantConsentForm({
       <p className="text-xs text-ink-faint">
         You can revoke at any time — access stops immediately. Every use is logged.
       </p>
-      {state.error ? (
-        <p role="alert" className="text-[13px] font-medium text-alert">{state.error}</p>
-      ) : null}
+      <FormErrorSummary errors={[state.error, granteeError, scopesError]} />
       {state.ok ? (
         <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
       ) : null}
@@ -112,6 +128,17 @@ export function GrantConsentForm({
 
 export function RevokeConsentButton({ consentId }: { consentId: string }) {
   const [state, action] = useActionState(revokeConsentAction, {});
+  const router = useRouter();
+
+  // Row reflects the revocation immediately; server revalidation follows.
+  useEffect(() => {
+    if (state.ok) router.refresh();
+  }, [state.ok, router]);
+
+  if (state.ok) {
+    return <Badge tone="neutral">revoked</Badge>;
+  }
+
   return (
     <form action={action} className="inline">
       <input type="hidden" name="consentId" value={consentId} />

@@ -7,7 +7,7 @@ import { patientService } from "@/server/modules/patients/service";
 import { ProfileForm } from "@/components/patient-forms";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Profile" };
+export const metadata: Metadata = { title: "Profile", description: "Your demographics, emergency contact, and self-reported details." };
 
 export default async function PatientProfile() {
   const user = await requireUser();

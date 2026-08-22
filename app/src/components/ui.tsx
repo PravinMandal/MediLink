@@ -64,12 +64,19 @@ export function ButtonLink({
 /* Form fields                                                         */
 /* ------------------------------------------------------------------ */
 
-export function Input({ className, ...props }: ComponentProps<"input">) {
+const errorControlClass =
+  "border-alert focus:border-alert focus-visible:outline-alert";
+
+export function Input({
+  className,
+  ...props
+}: ComponentProps<"input">) {
   return (
     <input
       className={cn(
         "w-full h-10 rounded-md border border-line-strong bg-paper-raised px-3 text-sm text-ink placeholder:text-ink-faint",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
+        props["aria-invalid"] === true && errorControlClass,
         className,
       )}
       {...props}
@@ -77,12 +84,16 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
   );
 }
 
-export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
+export function Textarea({
+  className,
+  ...props
+}: ComponentProps<"textarea">) {
   return (
     <textarea
       className={cn(
         "w-full rounded-md border border-line-strong bg-paper-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
+        props["aria-invalid"] === true && errorControlClass,
         className,
       )}
       {...props}
@@ -96,6 +107,7 @@ export function Select({ className, ...props }: ComponentProps<"select">) {
       className={cn(
         "w-full h-10 rounded-md border border-line-strong bg-paper-raised px-2.5 text-sm text-ink",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
+        props["aria-invalid"] === true && errorControlClass,
         className,
       )}
       {...props}
@@ -107,11 +119,13 @@ export function Field({
   label,
   htmlFor,
   hint,
+  error,
   children,
 }: {
   label: string;
   htmlFor?: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 }) {
   return (
@@ -122,8 +136,44 @@ export function Field({
       >
         {label}
       </label>
+      {error ? (
+        <p id={`${htmlFor ?? "field"}-error`} className="text-xs font-medium text-alert">
+          {error}
+        </p>
+      ) : null}
       {children}
       {hint ? <p className="text-xs text-ink-faint">{hint}</p> : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Form error affordances                                              */
+/* ------------------------------------------------------------------ */
+
+/** Error summary for a form — focusable so it is announced when errors land. */
+export function FormErrorSummary({
+  title = "Please fix the following:",
+  errors,
+}: {
+  title?: string;
+  errors: Array<string | undefined>;
+}) {
+  const items = errors.filter((e): e is string => !!e);
+  if (!items.length) return null;
+  return (
+    <div
+      role="alert"
+      tabIndex={-1}
+      data-error-summary
+      className="rounded-lg border border-alert/40 bg-alert-tint px-4 py-3"
+    >
+      <p className="text-[13px] font-semibold text-alert">{title}</p>
+      <ul className="mt-1 list-inside list-disc text-xs text-alert">
+        {items.map((e, i) => (
+          <li key={i}>{e}</li>
+        ))}
+      </ul>
     </div>
   );
 }

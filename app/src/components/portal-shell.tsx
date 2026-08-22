@@ -55,6 +55,12 @@ export function PortalShell({
 
   return (
     <div className="min-h-dvh">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:border focus:border-pine focus:bg-paper-raised focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-pine"
+      >
+        Skip to main content
+      </a>
       {/* Top bar */}
       <header className="sticky top-0 z-30 border-b border-line bg-paper-raised/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -95,15 +101,16 @@ export function PortalShell({
             </form>
           </div>
         </div>
-        {/* Mobile nav strip */}
+        {/* Mobile nav strip — scrollable; the only nav landmark (desktop uses plain list) */}
         <nav
           aria-label="Primary"
-          className="flex gap-1 overflow-x-auto border-t border-line px-2 py-1.5 lg:hidden"
+          className="flex gap-1 overflow-x-auto border-t border-line px-2 py-1.5 [scrollbar-width:none] lg:hidden"
         >
           {items.map((item) => (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive(item.href) ? "page" : undefined}
               className={cn(
                 "shrink-0 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors",
                 isActive(item.href)
@@ -118,28 +125,30 @@ export function PortalShell({
       </header>
 
       <div className="mx-auto flex max-w-6xl gap-8 px-4 py-8 sm:px-6">
-        {/* Desktop sidebar */}
+        {/* Desktop sidebar — same nav as above, presented as a plain list so
+            the page keeps a single nav landmark */}
         <aside className="hidden w-48 shrink-0 lg:block">
-          <nav aria-label="Primary" className="sticky top-20 space-y-0.5">
+          <ul className="sticky top-20 space-y-0.5">
             {items.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={cn(
-                  "block rounded-md px-3 py-2 text-[13.5px] font-medium transition-colors",
-                  isActive(item.href)
-                    ? "bg-pine-tint text-pine-ink"
-                    : "text-ink-soft hover:bg-paper-sunk hover:text-ink",
-                )}
-              >
-                {item.label}
-              </Link>
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  className={cn(
+                    "block rounded-md px-3 py-2 text-[13.5px] font-medium transition-colors",
+                    isActive(item.href)
+                      ? "bg-pine-tint text-pine-ink"
+                      : "text-ink-soft hover:bg-paper-sunk hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              </li>
             ))}
-          </nav>
+          </ul>
         </aside>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main id="main" className="min-w-0 flex-1">{children}</main>
       </div>
     </div>
   );

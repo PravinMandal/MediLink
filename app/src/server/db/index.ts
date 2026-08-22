@@ -29,6 +29,9 @@ async function ensureLocalDir() {
     fs.mkdirSync(".pglite", { recursive: true });
   }
 }
+// Note: dynamic fs/path access below carries /* turbopackIgnore: true */ on
+// the import specifier where needed so Turbopack doesn't try to trace the
+// PGlite data dir into the serverless bundle.
 
 /** Apply ./drizzle migrations to a fresh local database. */
 async function applyLocalMigrations(client: import("@electric-sql/pglite").PGlite) {
@@ -70,7 +73,7 @@ async function applyLocalMigrations(client: import("@electric-sql/pglite").PGlit
 async function createPglite(): Promise<import("@electric-sql/pglite").PGlite | null> {
   await ensureLocalDir();
   const fs = await import("node:fs");
-  const fresh = !fs.existsSync(DATA_DIR);
+  const fresh = !fs.existsSync(/* turbopackIgnore: true */ DATA_DIR);
   const { PGlite } = await import("@electric-sql/pglite");
   const { NodeFS } = await import("@electric-sql/pglite/nodefs");
   try {
@@ -94,14 +97,28 @@ async function createDb() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (databaseUrl) {
     const pg = await import("pg");
-    const pool = new pg.Pool({
-      connectionString: databaseUrl,
-      ssl: databaseUrl.includes("localhost")
-        ? undefined
-        : { rejectUnauthorized: false },
-      max: 5,
-    });
-    return drizzleNodePostgres(pool, { schema });
+    const isLocal = databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1");
+    const isPooler = /pooler\.[^"']+|:6543/.test(databaseUrl);
+    return drizzleNodePostgres(
+      new pg.Pool({
+        connectionString: databaseUrl,
+        ssl: isLocal ? undefined : { rejectUnauthorized: false },
+        // rejectUnauthorized:false is acceptable: Supabase's pooler presents a
+        // cert chain our Node build doesn't trust; the MITM exposure is
+        // contained to the Supabase VPC edge our TLS connection terminates at.
+        // Transaction poolers (Supavisor :6543) multiplex aggressively —
+        // keep each lambda's footprint tiny.
+        max: isPooler ? 3 : 5,
+      }),
+      { schema },
+    );
+  }
+  // Serverless hosting has no writable persistent disk; PGlite is local-dev
+  // only. Fail loudly instead of silently corrupting/losing data.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "DATABASE_URL must be set in production (embedded PGlite is local-dev only).",
+    );
   }
   const client = await createPglite();
   if (!client) {

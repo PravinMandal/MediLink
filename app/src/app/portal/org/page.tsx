@@ -1,16 +1,20 @@
 export const dynamic = "force-dynamic";
 
+// Upload + after() extraction can exceed the 10s Hobby default; 60s is the
+// documented D8 function cap we budget for.
+export const maxDuration = 60;
+
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
-import { PageHeader, Card, CardHeader, Badge, Alert, EmptyState } from "@/components/ui";
+import { desc, eq } from "drizzle-orm";
+import { PageHeader, Card, CardHeader, Badge, Alert } from "@/components/ui";
 import { db } from "@/server/db";
 import { documents, organizations, patients, user as userTable } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
-import { UploadDocumentForm } from "@/components/doctor-forms";
-import { desc, eq as eqOp } from "drizzle-orm";
+import { OrgUploadSection } from "@/components/org-upload";
+import { consent } from "@/server/modules/consent/service";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Facility console" };
+export const metadata: Metadata = { title: "Facility console", description: "Facility staff, consented patients, and recent document uploads." };
 
 export default async function OrgConsole() {
   const user = await requireUser();
@@ -36,20 +40,30 @@ export default async function OrgConsole() {
     db
       .select({ id: userTable.id, name: userTable.name, role: userTable.role, verificationStatus: userTable.verificationStatus })
       .from(userTable)
-      .where(eqOp(userTable.organizationId, org.id)),
+      .where(eq(userTable.organizationId, org.id)),
     db
       .select({ id: patients.id, fullName: patients.fullName, createdAt: patients.createdAt })
       .from(patients)
-      .where(eqOp(patients.organizationId, org.id))
+      .where(eq(patients.organizationId, org.id))
       .orderBy(desc(patients.createdAt))
       .limit(10),
     db
       .select()
       .from(documents)
-      .where(eqOp(documents.organizationId, org.id))
+      .where(eq(documents.organizationId, org.id))
       .orderBy(desc(documents.createdAt))
       .limit(10),
   ]);
+
+  // Facility uploads need document-scope consent — offer only patients who granted it.
+  const consentedPatients = (
+    await Promise.all(
+      orgPatients.map(async (p) => ({
+        ...p,
+        grants: await consent.activeForOrganization(p.id, org.id),
+      })),
+    )
+  ).filter((p) => p.grants.some((g) => (g.scopes as string[]).includes("documents")));
 
   const verified = org.verificationStatus === "verified";
 
@@ -111,6 +125,10 @@ export default async function OrgConsole() {
             ) : null}
           </ul>
         </Card>
+
+        <OrgUploadSection
+          patients={consentedPatients.map((p) => ({ id: p.id, fullName: p.fullName }))}
+        />
 
         {orgPatients.length ? (
           <Card>

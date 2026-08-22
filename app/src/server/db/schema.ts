@@ -23,9 +23,7 @@ import {
   numeric,
   index,
   uniqueIndex,
-  serial,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 /* ------------------------------------------------------------------ */
 /* Enums                                                               */
@@ -837,8 +835,7 @@ export const searchChunks = pgTable(
     content: text("content").notNull(),
     // Note: the GIN full-text index over to_tsvector('english', content) is
     // created by the migrate script as an expression index (drizzle-kit cannot
-    // serialize a self-referencing generated column). pgvector column is a
-    // prod-only (Supabase) addition; local dev uses full-text search only.
+    // serialize a self-referencing generated column).
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

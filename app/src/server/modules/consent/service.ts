@@ -8,6 +8,10 @@ import { consents, organizations, practitioners } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
 import { notify } from "@/server/modules/notifications/service";
 
+// Scopes patients can actually be offered/granted. "sensitive" stays valid
+// in the DB enum for legacy rows but is deliberately absent: it gates no
+// resource in the schema (scopeForResource never returns it), so offering
+// it would be a placebo grant.
 export const ALL_SCOPES = [
   "demographics",
   "conditions",
@@ -17,10 +21,9 @@ export const ALL_SCOPES = [
   "imaging",
   "procedures",
   "documents",
-  "sensitive",
 ] as const;
 
-export type ConsentScope = (typeof ALL_SCOPES)[number];
+export type ConsentScope = (typeof ALL_SCOPES)[number] | "sensitive";
 
 export const SCOPE_LABELS: Record<ConsentScope, string> = {
   demographics: "Demographics & identity",
@@ -33,6 +36,9 @@ export const SCOPE_LABELS: Record<ConsentScope, string> = {
   documents: "Source documents",
   sensitive: "Sensitive records",
 };
+
+/** Scopes offered in consent UIs — "sensitive" is excluded (grants nothing). */
+export const OFFERED_SCOPES: ConsentScope[] = [...ALL_SCOPES];
 
 export const consent = {
   async grant(input: {
@@ -60,21 +66,29 @@ export const consent = {
       })
       .returning();
 
-    await audit.record({
-      actorId: input.patientUserId,
-      actorRole: "patient",
-      patientId: input.patientId,
-      action: "consent.granted",
-      resourceType: "consent",
-      resourceId: row.id,
-      metadata: {
-        granteeType: input.granteeType,
-        grantee: input.granteePractitionerId ?? input.granteeOrganizationId,
-        scopes: input.scopes,
-        purpose: input.purpose,
-        days: input.days,
-      },
-    });
+    // H3 tradeoff: the grant is already committed. A failed audit append
+    // must not surface as a failed grant (the user would retry and be
+    // confused); log loudly instead. record() has bounded retries for the
+    // common (fork-race) failure mode, so reaching here is rare.
+    try {
+      await audit.record({
+        actorId: input.patientUserId,
+        actorRole: "patient",
+        patientId: input.patientId,
+        action: "consent.granted",
+        resourceType: "consent",
+        resourceId: row.id,
+        metadata: {
+          granteeType: input.granteeType,
+          grantee: input.granteePractitionerId ?? input.granteeOrganizationId,
+          scopes: input.scopes,
+          purpose: input.purpose,
+          days: input.days,
+        },
+      });
+    } catch (err) {
+      console.error("[audit] write failed (consent.granted)", err);
+    }
 
     if (input.granteeUserId) {
       await notify.push({

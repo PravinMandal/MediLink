@@ -1,0 +1,66 @@
+"use client";
+
+import Link from "next/link";
+import { useRef } from "react";
+import { cn } from "@/lib/utils";
+
+export type SectionTab = {
+  key: string;
+  label: string;
+  href: string;
+  allowed: boolean;
+  active: boolean;
+};
+
+/**
+ * URL-driven tabs with proper tab semantics. Selection follows navigation;
+ * arrow keys move focus, Enter/Space activates (native link behavior).
+ * Disallowed tabs stay focusable but marked aria-disabled.
+ */
+export function SectionTabs({ tabs }: { tabs: SectionTab[] }) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const links = Array.from(
+      listRef.current?.querySelectorAll<HTMLAnchorElement>("[role='tab']") ?? [],
+    );
+    if (!links.length) return;
+    const index = links.indexOf(document.activeElement as HTMLAnchorElement);
+    if (index === -1) return;
+    const dir = e.key === "ArrowRight" ? 1 : -1;
+    const next = links[(index + dir + links.length) % links.length]!;
+    next.focus();
+  };
+
+  return (
+    <div
+      ref={listRef}
+      role="tablist"
+      aria-label="Sections"
+      onKeyDown={onKeyDown}
+      className="mb-4 flex gap-1 overflow-x-auto border-b border-line"
+    >
+      {tabs.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          role="tab"
+          aria-selected={t.active}
+          aria-disabled={!t.allowed || undefined}
+          tabIndex={t.active ? 0 : -1}
+          className={cn(
+            "-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
+            t.active
+              ? "border-pine text-pine-ink"
+              : "border-transparent text-ink-soft hover:text-ink",
+            !t.allowed ? "opacity-40" : "",
+          )}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}

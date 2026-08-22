@@ -367,9 +367,87 @@ export const records = {
     list: ObservationInput[],
     prov: ProvenanceInput,
   ) {
-    for (const item of list) {
-      await records.addObservation(patientId, item, prov);
-    }
+    if (!list.length) return;
+    // Batched ingest: one multi-row INSERT per table instead of ~4 round
+    // trips per lab row (the old per-item loop was 160+ sequential queries
+    // for a 40-analyte report).
+    const createdAt = new Date();
+    const rows = await db
+      .insert(observations)
+      .values(
+        list.map((data) => ({
+          patientId,
+          panel: data.panel ?? null,
+          name: data.name,
+          loincCode: data.loincCode ?? null,
+          value: data.value != null ? String(data.value) : null,
+          valueString: data.valueString ?? null,
+          unit: data.unit ?? null,
+          referenceRangeLow:
+            data.referenceRangeLow != null ? String(data.referenceRangeLow) : null,
+          referenceRangeHigh:
+            data.referenceRangeHigh != null ? String(data.referenceRangeHigh) : null,
+          flag: data.flag ?? "unknown",
+          effectiveDate: data.effectiveDate ?? null,
+          authoredById: prov.authoredById,
+          organizationId: prov.organizationId ?? null,
+          sourceDocumentId: prov.sourceDocumentId ?? null,
+          trust: prov.trust,
+          recordedAt: prov.recordedAt ?? null,
+          resource: {
+            resourceType: "Observation",
+            code: { text: data.name },
+            valueQuantity:
+              data.value != null
+                ? { value: data.value, unit: data.unit ?? undefined }
+                : undefined,
+            valueString: data.value != null ? undefined : data.valueString ?? undefined,
+            effectiveDateTime: data.effectiveDate,
+          },
+        })),
+      )
+      .returning();
+
+    await audit.record({
+      actorId: prov.authoredById,
+      patientId,
+      organizationId: prov.organizationId ?? null,
+      action: "record.observations.batch_created",
+      resourceType: "observation",
+      resourceId: prov.sourceDocumentId ?? null,
+      metadata: { count: rows.length },
+    });
+
+    // Search chunks: delete-then-insert for the whole batch in two queries.
+    await db.delete(searchChunks).where(
+      and(
+        eq(searchChunks.patientId, patientId),
+        eq(searchChunks.recordType, "observation"),
+        inArray(
+          searchChunks.recordId,
+          rows.map((r) => r.id),
+        ),
+      ),
+    );
+    const chunks = rows
+      .map((row, i) => {
+        const data = list[i]!;
+        const content = `${data.panel ? `${data.panel} — ` : ""}${data.name} = ${data.value ?? data.valueString ?? "n/a"} ${data.unit ?? ""}${data.flag && data.flag !== "unknown" ? ` (${data.flag})` : ""}${data.effectiveDate ? ` on ${data.effectiveDate}` : ""}.`;
+        if (!content.trim()) return null;
+        return {
+          patientId,
+          recordType: "observation",
+          recordId: row.id,
+          label: `${data.name}: ${data.value ?? data.valueString ?? ""} ${data.unit ?? ""}`,
+          date: data.effectiveDate ?? null,
+          trust: prov.trust,
+          content: `${data.name}: ${data.value ?? data.valueString ?? ""} ${data.unit ?? ""}\n${content}`,
+        };
+      })
+      .filter((c) => c !== null);
+    if (chunks.length) await db.insert(searchChunks).values(chunks);
+    void createdAt;
+    return rows;
   },
 
   /* ---------------- Procedures ---------------- */
@@ -446,6 +524,25 @@ export const records = {
         },
       })
       .returning();
+    // L4: immunizations get the same audit + search-chunk treatment as every
+    // other clinical writer.
+    await audit.record({
+      actorId: prov.authoredById,
+      patientId,
+      organizationId: prov.organizationId ?? null,
+      action: "record.immunization.created",
+      resourceType: "immunization",
+      resourceId: row.id,
+    });
+    await indexRecordChunk({
+      patientId,
+      recordType: "immunization",
+      recordId: row.id,
+      label: `Immunization: ${data.vaccine}`,
+      content: `${data.vaccine} dose ${data.doseNumber ?? "n/a"}${data.date ? ` on ${data.date}` : ""}.`,
+      date: data.date,
+      trust: prov.trust,
+    });
     return row;
   },
 
@@ -666,15 +763,43 @@ export const records = {
   },
 
   async documentsFor(patientId: string) {
+    // Exclude textExtract (potentially the full document text) from list
+    // queries; the document detail/read paths select it explicitly.
     return db
-      .select()
+      .select({
+        id: documents.id,
+        patientId: documents.patientId,
+        kind: documents.kind,
+        title: documents.title,
+        mimeType: documents.mimeType,
+        sizeBytes: documents.sizeBytes,
+        storageKey: documents.storageKey,
+        contentHash: documents.contentHash,
+        pageCount: documents.pageCount,
+        extractionStatus: documents.extractionStatus,
+        extractionError: documents.extractionError,
+        encounterId: documents.encounterId,
+        recordedDate: documents.recordedDate,
+        uploadedById: documents.uploadedById,
+        organizationId: documents.organizationId,
+        supersededById: documents.supersededById,
+        createdAt: documents.createdAt,
+      })
       .from(documents)
       .where(eq(documents.patientId, patientId))
       .orderBy(desc(documents.createdAt));
   },
 
   /** Unified timeline across all resource types. */
-  async timeline(patientId: string) {
+  async timeline(
+    patientId: string,
+    opts?: { scopes?: string[] },
+  ) {
+    // When scopes are given, observation and report events need
+    // "lab_results"; skip the observation fetch entirely when it isn't
+    // granted (reports are still fetched — the caller filters them out).
+    const scopes = opts?.scopes;
+    const includeLabs = !scopes || scopes.includes("lab_results");
     const [
       conds,
       allergiesRows,
@@ -689,10 +814,14 @@ export const records = {
       records.currentConditions(patientId),
       records.currentAllergies(patientId),
       records.allMedications(patientId),
-      records.observationsFor(patientId, 1000),
+      includeLabs
+        ? records.observationsFor(patientId, 1000)
+        : Promise.resolve([] as Awaited<ReturnType<typeof records.observationsFor>>),
       records.proceduresFor(patientId),
       records.immunizationsFor(patientId),
-      records.diagnosticReportsFor(patientId),
+      includeLabs
+        ? records.diagnosticReportsFor(patientId)
+        : Promise.resolve([] as Awaited<ReturnType<typeof records.diagnosticReportsFor>>),
       records.documentsFor(patientId),
       records.encountersFor(patientId),
     ]);
@@ -816,12 +945,19 @@ export const records = {
   /**
    * Blood group: verified lab observation wins over self-report.
    * Returns both so the UI can flag conflicts.
+   * `patientSelfReported` (optional) skips the duplicate patients-row fetch
+   * when the caller already has the patient row loaded.
    */
-  async bloodGroup(patientId: string) {
-    const [patient] = await db
-      .select({ self: patients.bloodGroupSelfReported })
-      .from(patients)
-      .where(eq(patients.id, patientId));
+  async bloodGroup(patientId: string, patientSelfReported?: string | null) {
+    const patient =
+      patientSelfReported !== undefined
+        ? { self: patientSelfReported }
+        : (
+            await db
+              .select({ self: patients.bloodGroupSelfReported })
+              .from(patients)
+              .where(eq(patients.id, patientId))
+          )[0];
     const bgObs = await db
       .select()
       .from(observations)

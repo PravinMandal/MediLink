@@ -6,6 +6,27 @@ import { cn, formatDate, TRUST_LABEL, KIND_LABEL } from "@/lib/utils";
 import { buttonClass, Button } from "./ui";
 
 /* ------------------------------------------------------------------ */
+/* useFocusFirstError — focus summary or first invalid field on error  */
+/* ------------------------------------------------------------------ */
+
+export function useFocusFirstError(formError: string | undefined) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const seen = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!formError || seen.current === formError) return;
+    seen.current = formError;
+    const form = formRef.current;
+    if (!form) return;
+    const summary = form.querySelector<HTMLElement>("[data-error-summary]");
+    const invalid = form.querySelector<HTMLElement>("[aria-invalid='true']");
+    (summary ?? invalid)?.focus();
+  }, [formError]);
+
+  return formRef;
+}
+
+/* ------------------------------------------------------------------ */
 /* SubmitButton — shows pending state, keeps label                     */
 /* ------------------------------------------------------------------ */
 
@@ -75,7 +96,7 @@ export function CitationChips({
             onOpen(i);
           }}
           title={`Source ${i + 1}: ${s.label}`}
-          className="num inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded-[3px] border border-pine/40 bg-pine-tint px-[3px] text-[10px] font-semibold text-pine-ink transition-colors hover:border-pine hover:bg-pine hover:text-white"
+          className="num inline-flex h-4 min-h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border border-pine/40 bg-pine-tint px-1.5 text-[10px] font-semibold leading-none text-pine-ink transition-colors hover:border-pine hover:bg-pine hover:text-white"
         >
           {i + 1}
         </button>
@@ -104,13 +125,35 @@ export function SourceDrawer({
 
   useEffect(() => {
     if (openIndex === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    // Move focus into the drawer
+    const opener = document.activeElement as HTMLElement | null;
     ref.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !ref.current) return;
+      // Focus trap: cycle Tab within the drawer
+      const focusables = ref.current.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+      );
+      if (!focusables.length) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      opener?.focus?.();
+    };
   }, [openIndex, onClose]);
 
   if (openIndex === null) return null;
@@ -128,7 +171,7 @@ export function SourceDrawer({
         ref={ref}
         role="dialog"
         aria-modal="true"
-        aria-label="Claim sources"
+        aria-labelledby="source-drawer-heading"
         tabIndex={-1}
         className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-paper-raised shadow-xl focus:outline-none"
         style={{ animation: "slide-in 200ms cubic-bezier(0.2,0.8,0.2,1)" }}
@@ -136,7 +179,7 @@ export function SourceDrawer({
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <div>
             <p className="eyebrow">Evidence chain</p>
-            <p className="font-display text-[15px] font-semibold text-ink">
+            <p id="source-drawer-heading" className="font-display text-[15px] font-semibold text-ink">
               {sources.length} source{sources.length === 1 ? "" : "s"} behind this statement
             </p>
           </div>

@@ -14,7 +14,10 @@ export default async function SignInPage({
   const { next } = await searchParams;
   // Real session check (not cookie optimism) — stale cookies render the form.
   const user = await getSessionUser();
-  if (user) redirect(next && next.startsWith("/") ? next : portalHomeForRole(user.role));
+  // Same guard as auth-actions: "/" + non-slash start blocks "//evil.com"
+  const SAFE_NEXT = /^\/[^/](.*)?$/;
+  if (user)
+    redirect(next && SAFE_NEXT.test(next) ? next : portalHomeForRole(user.role));
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">

@@ -9,7 +9,7 @@ import { db } from "@/server/db";
 import { organizations } from "@/server/db/schema";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Documents" };
+export const metadata: Metadata = { title: "Documents", description: "Source documents on file, with content hashes for integrity." };
 
 export default async function PatientDocuments() {
   const user = await requireUser();

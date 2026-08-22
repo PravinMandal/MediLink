@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { desc, eq } from "drizzle-orm";
 import { PageHeader, Card, CardHeader, Badge, Alert, EmptyState } from "@/components/ui";
 import { db } from "@/server/db";
-import { emergencyAccessEvents, organizations, patients, practitioners, user as userTable } from "@/server/db/schema";
+import { emergencyAccessEvents, patients, practitioners, user as userTable } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
 import { audit } from "@/server/modules/audit/service";
 import {
@@ -12,13 +12,15 @@ import {
   listPendingPractitioners,
 } from "@/server/modules/identity/verification";
 import {
+  GrantRoleForm,
   ReviewEmergencyButtons,
   ReviewOrganizationButtons,
   ReviewPractitionerButtons,
+  VerifyAuditChainButton,
 } from "@/components/admin-forms";
 import { formatTime } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Review queue" };
+export const metadata: Metadata = { title: "Review queue", description: "Verify practitioner registrations and organizations." };
 
 export default async function AdminPage() {
   const user = await requireUser();
@@ -50,9 +52,14 @@ export default async function AdminPage() {
     : [];
   const nameFor = new Map(practitionerUserNames.map((u) => [u.id, u]));
 
-  const orgSubmitters = pendingOrgs.length
-    ? await db.select({ id: organizations.id, name: organizations.name }).from(organizations)
-    : [];
+  // Non-admin accounts eligible for a professional role grant.
+  const grantableUsers = (
+    await db
+      .select({ id: userTable.id, name: userTable.name, email: userTable.email, role: userTable.role })
+      .from(userTable)
+      .orderBy(userTable.name)
+      .limit(200)
+  ).filter((u) => u.role !== "platform_admin");
 
   return (
     <>
@@ -153,8 +160,19 @@ export default async function AdminPage() {
         </Card>
 
         <Card>
+          <CardHeader eyebrow="Administration" title="Grant role" />
+          <GrantRoleForm users={grantableUsers} />
+        </Card>
+
+        <Card>
           <CardHeader eyebrow="Tamper-evident" title="Recent audit events" />
-          <ul className="max-h-[520px] divide-y divide-line overflow-y-auto">
+          <VerifyAuditChainButton />
+          <ul
+            tabIndex={0}
+            role="region"
+            aria-label="Recent audit events (scrollable)"
+            className="max-h-[520px] divide-y divide-line overflow-y-auto"
+          >
             {recentAudit.map((e) => (
               <li key={e.seq} className="flex items-center justify-between gap-2 px-4 py-2 sm:px-5">
                 <div className="min-w-0">

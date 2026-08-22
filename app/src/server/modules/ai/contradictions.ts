@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull, desc } from "drizzle-orm";
 import { db } from "@/server/db";
-import { allergies, conflicts, documents, observations, patients } from "@/server/db/schema";
+import { allergies, conflicts, documents, observations } from "@/server/db/schema";
 import { records } from "@/server/modules/records/service";
 
 type ConflictKind = "blood_group" | "allergy" | "duplicate_document" | "lab_value";
@@ -152,7 +152,7 @@ export const contradictionEngine = {
       if (!byNameDate.has(key)) byNameDate.set(key, []);
       byNameDate.get(key)!.push(o);
     }
-    for (const [key, rows] of byNameDate) {
+    for (const [, rows] of byNameDate) {
       if (rows.length > 1) {
         const values = new Set(rows.map((r) => Number(r.value)));
         if (values.size > 1) {

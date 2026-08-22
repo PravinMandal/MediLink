@@ -7,9 +7,10 @@ import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { consent } from "@/server/modules/consent/service";
+import { PatientSearchForm } from "@/components/patient-search";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Patients" };
+export const metadata: Metadata = { title: "Patients", description: "Search for a patient and open their consent-scoped record." };
 
 export default async function DoctorHome({
   searchParams,
@@ -19,6 +20,10 @@ export default async function DoctorHome({
   const user = await requireUser();
   const { q } = await searchParams;
   const practitioner = await getPractitionerForUser(user.id);
+
+  // Fire-and-forget: expire lapsed grants so this grantee-side list never
+  // shows stale "active" consents (patient-side consents page does the same).
+  void consent.expireStale().catch(() => undefined);
 
   if (!practitioner) {
     return (
@@ -68,22 +73,7 @@ export default async function DoctorHome({
         description="Search by name or phone. You see a patient's record only with their consent — or through audited emergency access."
       />
 
-      <form action="/portal/doctor" method="get" className="mb-5 flex gap-2" role="search">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search “Rahul”, “98765…”, “cardiac”…"
-          aria-label="Search patients"
-          className="h-11 flex-1 rounded-md border border-line-strong bg-paper-raised px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none"
-        />
-        <button
-          type="submit"
-          className="h-11 cursor-pointer rounded-md border border-pine bg-pine px-4 text-sm font-medium text-white transition-colors hover:bg-pine-deep"
-        >
-          Search
-        </button>
-      </form>
+      <PatientSearchForm initialQuery={q} />
 
       {q?.trim() ? (
         withAccess.length === 0 ? (

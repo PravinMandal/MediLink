@@ -22,6 +22,8 @@ import {
   patients,
 } from "@/server/db/schema";
 import { records } from "@/server/modules/records/service";
+import { scopeForResource } from "@/server/modules/access/guard";
+import type { ConsentScope } from "@/server/modules/consent/service";
 import { contradictionEngine } from "./contradictions";
 
 export type ClaimSource = {
@@ -39,7 +41,7 @@ export type Claim = {
   sources: ClaimSource[];
 };
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 
 function ageFrom(dob: string | null | undefined): number | null {
   if (!dob) return null;
@@ -67,7 +69,31 @@ function fmtDate(s: string | null | undefined): string {
 /* Deterministic SBAR builder                                          */
 /* ------------------------------------------------------------------ */
 
-async function buildDeterministic(patientId: string, focus?: string): Promise<Claim[]> {
+/** Does this claim cite at least one source permitted by the granted scopes? */
+function claimWithinScopes(claim: Claim, scopes: ConsentScope[] | null): boolean {
+  if (!scopes) return true; // unrestricted caller (patient self-access)
+  return claim.sources.some((s) => scopes.includes(scopeForResource(s.recordType)));
+}
+
+/**
+ * D3 stored-summary gate: every scope a stored claim covers must be within
+ * the granted scopes. Uncited claims (conflict notices) carry no scope, so
+ * they are permitted.
+ */
+function claimsWithinScopes(
+  claims: Array<{ sources: ClaimSource[] }>,
+  scopes: ConsentScope[],
+): boolean {
+  return claims.every((c) =>
+    c.sources.every((s) => scopes.includes(scopeForResource(s.recordType))),
+  );
+}
+
+async function buildDeterministic(
+  patientId: string,
+  focus?: string,
+  scopes?: ConsentScope[] | null,
+): Promise<Claim[]> {
   const [patient] = await db.select().from(patients).where(eq(patients.id, patientId));
   if (!patient) throw new Error("Patient not found");
 
@@ -342,7 +368,11 @@ async function buildDeterministic(patientId: string, focus?: string): Promise<Cl
     });
   }
 
-  return claims;
+  // Consent boundary: a doctor granted a subset of scopes must never see
+  // claims sourced from out-of-scope records. Uncited claims (conflict
+  // notices, "no allergies") are kept only for unrestricted callers.
+  const scoped = claims.filter((c) => claimWithinScopes(c, scopes ?? null) || (c.sources.length === 0 && !scopes));
+  return scoped;
 }
 
 /* ------------------------------------------------------------------ */
@@ -376,10 +406,15 @@ async function tryLlm(
     "Omit sections with no relevant facts rather than inventing them.";
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Header auth — never the ?key= query param (leaks into logs)
+        "x-goog-api-key": key,
+      },
+      signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt + "\n\nFACTS:\n" + JSON.stringify(context) }] }],
         generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
@@ -431,8 +466,14 @@ export const summarizer = {
     patientId: string;
     requestedById: string;
     question?: string;
+    /** Granted consent scopes; claims outside them are dropped. */
+    scopes?: ConsentScope[] | null;
   }) {
-    const deterministic = await buildDeterministic(input.patientId, input.question);
+    const deterministic = await buildDeterministic(
+      input.patientId,
+      input.question,
+      input.scopes,
+    );
     let mode: "deterministic" | "llm" = "deterministic";
     let model: string | null = null;
     let claims = deterministic;
@@ -476,7 +517,17 @@ export const summarizer = {
     return { summary, claims, mode };
   },
 
-  async latestFor(patientId: string) {
+  /**
+   * Latest stored summary for a patient.
+   *
+   * `scopes` gating (D3): when non-null, the stored summary is returned only
+   * if every consent scope its claims cover is within the caller's granted
+   * scopes; otherwise null (a partial grant must never replay a full-record
+   * SBAR). `null` (default) means "ungated" — reserved for the patient's own
+   * self-access view; professional callers must always pass their granted
+   * scopes, e.g. via latestForPatientWithinScopes below.
+   */
+  async latestFor(patientId: string, scopes: ConsentScope[] | null = null) {
     const [summary] = await db
       .select()
       .from(aiSummaries)
@@ -489,6 +540,18 @@ export const summarizer = {
       .from(aiSummaryClaims)
       .where(eq(aiSummaryClaims.summaryId, summary.id))
       .orderBy(aiSummaryClaims.ordinal);
+    if (scopes !== null && !claimsWithinScopes(claims, scopes)) return null;
     return { summary, claims };
   },
 };
+
+/**
+ * Explicitly scope-gated stored-summary read for professional callers —
+ * the wired entry point for doctor/staff pages (D3).
+ */
+export async function latestForPatientWithinScopes(
+  patientId: string,
+  scopes: ConsentScope[],
+) {
+  return summarizer.latestFor(patientId, scopes);
+}

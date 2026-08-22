@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -19,13 +19,35 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://medilink.example.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: {
     default: "MediLink — Proven patient history",
     template: "%s · MediLink",
   },
   description:
     "A longitudinal health record platform where every medical fact carries its source. Verified professionals contribute authenticated records; patients control access.",
+  openGraph: {
+    title: {
+      default: "MediLink — Proven patient history",
+      template: "%s · MediLink",
+    },
+    description:
+      "A longitudinal health record platform where every medical fact carries its source. Verified professionals contribute authenticated records; patients control access.",
+    url: appUrl,
+    siteName: "MediLink",
+    locale: "en_IN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#14594b",
 };
 
 export default function RootLayout({

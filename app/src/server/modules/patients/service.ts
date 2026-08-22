@@ -47,6 +47,12 @@ export const patientService = {
   /**
    * Consent-aware search used by doctors: matches name or phone, and returns
    * an access indicator so the UI can show "has access / request access".
+   *
+   * Kept as substring ilike ('%term%') rather than prefix-only: doctors often
+   * search by partial name/phone fragments. The 0001_patient_search_trgm
+   * migration adds pg_trgm GIN indexes on full_name and phone so the
+   * substring match is index-backed on Supabase (pg_trgm is available on the
+   * free tier) and on PGlite.
    */
   async search(query: string, limit = 20) {
     const q = `%${query.trim()}%`;

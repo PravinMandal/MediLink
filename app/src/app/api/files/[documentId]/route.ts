@@ -23,6 +23,7 @@ export async function GET(
     .select()
     .from(documents)
     .where(eq(documents.id, documentId));
+  // Uniform 404 for missing-or-denied: no existence oracle for enumeration.
   if (!doc) return new NextResponse("Not found", { status: 404 });
 
   const decision = await access.check(
@@ -30,7 +31,19 @@ export async function GET(
     doc.patientId,
     "documents",
   );
-  if (!decision.allowed) return new NextResponse("Forbidden", { status: 403 });
+  if (!decision.allowed) return new NextResponse("Not found", { status: 404 });
+
+  // Mime allowlist: only formats we deliberately serve. Anything stored
+  // outside it (e.g. a hand-edited row) is refused rather than sniffed.
+  const isAllowedMime =
+    doc.mimeType === "application/pdf" ||
+    doc.mimeType.startsWith("image/") ||
+    doc.mimeType === "text/plain";
+  if (!isAllowedMime) return new NextResponse("Unsupported media type", { status: 415 });
+
+  // Inline only for types that render safely with nosniff (PDF preview for
+  // doctors); everything else downloads as an attachment.
+  const inlineOk = doc.mimeType === "application/pdf" || doc.mimeType.startsWith("image/");
 
   const bytes = await readDocumentBytes(doc.storageKey);
   await audit.record({
@@ -46,8 +59,9 @@ export async function GET(
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       "Content-Type": doc.mimeType,
-      "Content-Disposition": `inline; filename="${doc.title.replace(/[^\w .-]/g, "_")}"`,
+      "Content-Disposition": `${inlineOk ? "inline" : "attachment"}; filename="${doc.title.replace(/[^\w .-]/g, "_")}"`,
       "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

@@ -48,27 +48,52 @@ export class AccessDeniedError extends Error {
   }
 }
 
+/** Imaging modalities: diagnostic reports about these map to "imaging". */
+const IMAGING_CATEGORY = new Set(["imaging", "radiology", "radiology_report"]);
+const IMAGING_MODALITIES =
+  /(x-?ray|radiograph|ct|cat scan|mri|ultrasound|sonograph|echo|echocardiograph|pet|scan|mammograph)/i;
+
 /** Map a clinical table name to the consent scope governing it. */
-export function scopeForResource(resourceType: string): ConsentScope {
+export function scopeForResource(
+  resourceType: string,
+  kind?: string | null,
+): ConsentScope {
   switch (resourceType) {
     case "conditions":
+    case "condition":
     case "encounters":
+    case "encounter":
       return "conditions";
     case "allergies":
+    case "allergy":
       return "allergies";
     case "medication_statements":
+    case "medication_statement":
       return "medications";
     case "observations":
+    case "observation":
       return "lab_results";
     case "diagnostic_reports":
+    case "diagnostic_report": {
+      // H1: imaging reports are governed by the "imaging" scope, not
+      // lab_results. Distinguish by the report's category/kind column.
+      const k = kind?.trim() ?? "";
+      if (IMAGING_CATEGORY.has(k.toLowerCase()) || IMAGING_MODALITIES.test(k))
+        return "imaging";
       return "lab_results";
+    }
     case "procedures":
+    case "procedure":
     case "immunizations":
+    case "immunization":
       return "procedures";
     case "documents":
+    case "document":
       return "documents";
     default:
-      return "documents";
+      // Fail closed: an unmapped resource type must never silently fall
+      // back to a granted scope.
+      throw new Error(`Unknown resource type: ${resourceType}`);
   }
 }
 

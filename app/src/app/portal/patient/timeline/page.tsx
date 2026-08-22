@@ -7,7 +7,7 @@ import { patientService } from "@/server/modules/patients/service";
 import { records } from "@/server/modules/records/service";
 import { formatDate, TRUST_LABEL } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Timeline" };
+export const metadata: Metadata = { title: "Timeline", description: "Your full clinical history in chronological order, with provenance." };
 
 const KIND_TONE: Record<string, "pine" | "amber" | "alert" | "info" | "neutral"> = {
   condition: "info",

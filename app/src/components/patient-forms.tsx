@@ -2,8 +2,8 @@
 
 import { useActionState } from "react";
 import { updatePatientProfileAction } from "@/server/actions/patient-actions";
-import { Field, Input, Select, Alert } from "./ui";
-import { SubmitButton } from "./interactive";
+import { Field, Input, Select, Alert, FormErrorSummary } from "./ui";
+import { SubmitButton, useFocusFirstError } from "./interactive";
 
 export function EmergencyProfileForm({
   initial,
@@ -15,8 +15,9 @@ export function EmergencyProfileForm({
   };
 }) {
   const [state, action] = useActionState(updatePatientProfileAction, {});
+  const formRef = useFocusFirstError(state.error);
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
+    <form ref={formRef} action={action} className="space-y-4 px-4 py-4 sm:px-5">
       <Alert tone="info">
         This profile is what an emergency doctor sees first — keep the contact current.
         Your blood group shown to doctors is the verified lab value when one exists.
@@ -54,9 +55,7 @@ export function EmergencyProfileForm({
           />
         </Field>
       </div>
-      {state.error ? (
-        <p role="alert" className="text-[13px] font-medium text-alert">{state.error}</p>
-      ) : null}
+      <FormErrorSummary errors={[state.error]} />
       {state.ok ? (
         <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
       ) : null}
@@ -76,8 +75,9 @@ export function ProfileForm({
   };
 }) {
   const [state, action] = useActionState(updatePatientProfileAction, {});
+  const formRef = useFocusFirstError(state.error);
   return (
-    <form action={action} className="space-y-4 px-4 py-4 sm:px-5">
+    <form ref={formRef} action={action} className="space-y-4 px-4 py-4 sm:px-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Phone" htmlFor="p-phone">
           <Input id="p-phone" name="phone" type="tel" defaultValue={initial.patientPhone ?? ""} placeholder="+91 …" />
@@ -86,9 +86,7 @@ export function ProfileForm({
           <Input id="p-city" name="city" defaultValue={initial.city ?? ""} placeholder="e.g. Pune" />
         </Field>
       </div>
-      {state.error ? (
-        <p role="alert" className="text-[13px] font-medium text-alert">{state.error}</p>
-      ) : null}
+      <FormErrorSummary errors={[state.error]} />
       {state.ok ? (
         <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>
       ) : null}

@@ -1,17 +1,35 @@
-node_modules/
-.next/
-out/
-dist/
-.uploads/
+# MediLink — root gitignore
+
+# secrets — NEVER commit real env files
 .env
 .env.*
 !.env.example
-*.local
-.vercel
-next-env.d.ts
-.DS_Store
-playwright-report/
-test-results/
-.drizzle/
+*.pem
+
+# local embedded database (contains seeded demo data)
 .pglite/
-app/shots/
+
+# local document uploads (dev storage adapter)
+.uploads/
+
+# screenshots / visual QA artifacts
+shots/
+
+# next.js / builds
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# deps
+node_modules/
+
+# vercel
+.vercel/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+coverage/

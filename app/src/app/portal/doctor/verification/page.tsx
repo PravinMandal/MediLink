@@ -7,7 +7,7 @@ import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { VerificationForm } from "@/components/doctor-forms";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Verification" };
+export const metadata: Metadata = { title: "Verification", description: "Submit your council registration for practitioner verification." };
 
 export default async function DoctorVerification() {
   const user = await requireUser();

@@ -1,4 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# See https://help.github.com/articles/ignoring-files/ for more information about ignoring files.
 
 # dependencies
 /node_modules
@@ -30,8 +30,18 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — real secrets live on Vercel, never in the repo
 .env*
+!.env.example
+
+# local embedded database (seeded demo data)
+/.pglite/
+
+# local file uploads (dev storage adapter)
+/.uploads/
+
+# visual QA screenshots
+/shots/
 
 # vercel
 .vercel
