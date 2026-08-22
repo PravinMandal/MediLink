@@ -33,3 +33,7 @@ node_modules/
 *.log
 npm-debug.log*
 coverage/
+
+# AI agent instruction files (local tooling only)
+**/AGENTS.md
+**/CLAUDE.md
