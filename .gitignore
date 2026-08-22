@@ -1,0 +1,60 @@
+# MediLink — root gitignore
+
+# secrets — NEVER commit real env files
+.env
+.env.*
+!.env.example
+*.pem
+
+# local embedded database (contains seeded demo data)
+.pglite/
+
+# local document uploads (dev storage adapter)
+.uploads/
+
+# screenshots / visual QA artifacts
+shots/
+
+# next.js / builds
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# deps
+node_modules/
+
+# vercel
+.vercel/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+coverage/
+
+# AI agent instruction files (local tooling only)
+**/AGENTS.md
+**/CLAUDE.md
+
+# agent planning session artifacts
+.zcode/
+
+
+# next.js template leftovers kept locally (unused)
+app/README.md
+app/public/*.svg
+
+
+docs/BUILD-PLAN.md
+docs/MASTER-GOAL.md
+docs/questions-for-stakeholder.md
+docs/research-findings.md
+docs/design-principles.md
+docs/overhaul/
+docs/
+app/scripts/shoot.mjs
+app/shots/
+.gitignore
+app/.env.example
