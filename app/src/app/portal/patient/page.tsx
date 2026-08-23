@@ -7,6 +7,7 @@ import { patientService } from "@/server/modules/patients/service";
 import { records } from "@/server/modules/records/service";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { summarizer } from "@/server/modules/ai/summarize";
+import { PrintCardButton } from "@/components/print-button";
 import { notify } from "@/server/modules/notifications/service";
 import { audit } from "@/server/modules/audit/service";
 import { formatDate, formatTime, TRUST_LABEL, formatAuditAction } from "@/lib/utils";
@@ -105,15 +106,18 @@ export default async function PatientDashboard() {
         </Card>
 
         {/* Own SBAR summary — every claim cited, readable by the patient */}
-        <Card className="md:col-span-2">
+        <Card className="print-card print-full md:col-span-2">
           <CardHeader
             eyebrow="AI-generated summary"
             title="Your SBAR summary"
             action={
               summary ? (
-                <Badge tone={summary.summary.mode === "llm" ? "info" : "neutral"}>
-                  {summary.summary.mode === "llm" ? `LLM · ${summary.summary.model}` : "deterministic"}
-                </Badge>
+                <div className="flex items-center gap-2 print:hidden">
+                  <Badge tone={summary.summary.mode === "llm" ? "info" : "neutral"}>
+                    {summary.summary.mode === "llm" ? `LLM · ${summary.summary.model}` : "deterministic"}
+                  </Badge>
+                  <PrintCardButton label="🖨 Print summary" />
+                </div>
               ) : undefined
             }
           />

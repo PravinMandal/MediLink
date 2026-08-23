@@ -65,8 +65,9 @@ body {
   color: var(--color-pine-ink);
 }
 
-/* Emergency-card print isolation: body.printing-card hides everything but the
-   card (and the print button's own row is hidden too). */
+/* Print isolation: body.printing-card hides everything but the marked
+   .print-card element. Narrow artifacts (emergency card) center at 420px;
+   document-like ones (summary) print full width via .print-full. */
 @media print {
   body.printing-card * {
     visibility: hidden;
@@ -81,6 +82,11 @@ body {
     transform: translateX(-50%);
     max-width: 420px;
     box-shadow: none;
+  }
+  body.printing-card .print-card.print-full {
+    position: static;
+    transform: none;
+    max-width: none;
   }
 }
 
