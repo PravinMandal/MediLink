@@ -5,7 +5,17 @@ password manager — never in this repo.** (Deployed 2026-08-23 on Vercel Hobby
 bom1 + Supabase Free ap-south-1, Gemini `gemini-3.6-flash`, verification in
 manual_review mode.)
 
-Redeploy: `cd app; vercel --prod --yes` (~40s).
+**Current live deployment:** https://medilink-health.vercel.app — 26/26
+behavioral checks pass (verified 2026-08-23).
+
+**KNOWN OPEN ITEM (2026-08-23):** `SUPABASE_SERVICE_ROLE_KEY` currently set on
+the deployment is invalid — Supabase Storage rejects writes (403 "Invalid
+Compact JWS"). Uploads return an explicit configuration error in the UI.
+Fix: Project Settings → API → copy the real service_role key → update the env
+var in Vercel → redeploy. The signed-URL file redirect activates automatically
+once the key is valid.
+
+Redeploy: `cd app; npx vercel --prod` (~40s).
 
 Post-deploy gotchas already fixed (do not reintroduce):
 - `vercel.json` must be pure JSON (no comments).
