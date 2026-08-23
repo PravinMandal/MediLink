@@ -43,10 +43,10 @@ Fresh-eyes Juror final (round 4, judged on production via DOM probes): **9.1/10 
 docs/decisions.md D16–D27. Notable researched refusals: React Compiler not enabled (D27 — Babel build cost vs marginal INP win on a server-component-dominant app; revisit when the Rust port is stable).
 
 ## Known remaining
+- **Supabase storage service key is INVALID** (found round 26): uploads fail with 403 "Invalid Compact JWS"; UI now says so explicitly. Fix: replace SUPABASE_SERVICE_ROLE_KEY in env with the real key from the Supabase dashboard (stakeholder Q8). Everything except storage writes works, including the signed-URL redirect path (activates automatically once the key is valid).
 - ABDM sandbox adapter (needs credentials; ABHA data model landed instead).
 - Notifications in-app + opt-in email; no SMS.
 - LLM-mode summaries drop uncited deterministic claims.
-- Supabase storage seeding runs local-disk (service key in .env is invalid for storage writes — production uploads need a valid SUPABASE_SERVICE_ROLE_KEY; D6 guards fail loudly).
 - Vercel Hobby non-commercial clause (stakeholder Q1).
 
 ## Evidence
