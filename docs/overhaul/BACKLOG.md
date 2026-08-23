@@ -85,4 +85,17 @@ Tiers: P0 correctness/security → P1 broken/missing core → P2 core UX → P3 
 - ☑ Explorer-2 #1 QR scan-path fix (record URL → middleware next-redirect); #2 shared formatAuditAction; #3 org console consent-driven patient list; #6 bell polish
 - ☐ ABDM sandbox adapter behind VerificationProvider — Explorer #2 (deferred: no sandbox credentials; ABHA field landed as D24)
 - ☑ Deploy + production re-verify — DONE 2026-08-23 09:10: https://medilink-health.vercel.app, 26/26 behavioral checks on production
+- ☑ D23 Gatekeeper security round: retry patient-binding fix + regression test, admin query bounds, unreadCount SQL
+- ☑ D24 ABHA number (migration 0004, profile input, doctor header display) — E2E verified
+- ☑ D25 contradictions dedupe/resolve fixes; branded 404 + global-error; sign-up dead ends; portal dispatch
+- ☑ D26 patient search 3-char minimum (DPDP default); prod console digest-only logging
+- ☑ D27 React Compiler evaluated, deliberately not enabled (documented rationale)
+- ☑ Round 21 a11y: axe-core clean on 4 key surfaces (dl structure fix)
+- ☑ Round 22-23 print-summary button; patient documents extraction chips
+- ☑ Round 25 journey rail scroll-sync; honesty fixes (magic dates, forever claim, ABDM qualifier); lowDetail resize; signed-URL file redirect
+- ☑ Round 26 storage-key failure honestly surfaced (stakeholder Q8 — needs real SUPABASE_SERVICE_ROLE_KEY)
+- ☑ Round 28 lint zero warnings; break-glass E2E; comprehensive gate sweep all green
+- ☑ Round 29 Juror-5 confirmation: 9.2/10 on production, no regressions
+
+**Session 2 final state: 31/31 tests · tsc clean · lint 0/0 · build green · 26/26 behavioral (local + production) · axe clean · Juror 9.2/10.**
 
