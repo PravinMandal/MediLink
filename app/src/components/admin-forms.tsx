@@ -147,9 +147,15 @@ export function ReviewEmergencyButtons({ eventId }: { eventId: string }) {
 
 type VerifyState = FormState & { brokenAt?: number | null };
 
+// useActionState's adapter signature needs named params it ignores; keeping
+// the wrapper named avoids unused-var lint noise inline.
+async function verifyAuditChainWrapper(): Promise<VerifyState> {
+  return verifyAuditChainAction();
+}
+
 export function VerifyAuditChainButton() {
   const [state, action] = useActionState<VerifyState, FormData>(
-    async (_prev, _fd) => verifyAuditChainAction(),
+    verifyAuditChainWrapper,
     {},
   );
 
