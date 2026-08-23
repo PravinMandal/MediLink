@@ -89,3 +89,9 @@ Shipped: patient search 3-char minimum (D26, DPDP researched default for stakeho
 
 ## Round 21 — 2026-08-23 09:58
 Shipped: a11y hardening — axe-core audit across marketing/dashboard/emergency/timeline; fixed the dl structure violation (conflict note moved out of the dl); all four surfaces now 0 serious/critical violations. React Compiler evaluated and deliberately not enabled (D27 — researched rationale). Deployed; production 26/26.
+
+## Round 22 — 2026-08-23 10:03
+Shipped: print-summary button on the patient dashboard (generic PrintCardButton, .print-full CSS for document-width artifacts). Deployed; production 26/26.
+
+## Round 23 — 2026-08-23 10:09
+Shipped: patient documents page extraction status chips + staleness rule (parity with doctor/org views). Deployed; production 26/26.
