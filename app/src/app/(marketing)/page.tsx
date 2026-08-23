@@ -164,7 +164,10 @@ export default function MarketingHome() {
               <li key={i} className="bg-paper-raised">
                 <Reveal delay={i * 80} className="h-full">
                   <div className="flex h-full flex-col p-6">
-                    <span className="num text-[13px] font-semibold text-pine">
+                    <span
+                      aria-hidden
+                      className="num font-display text-[42px] font-bold leading-none tracking-tight text-pine/25"
+                    >
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <h3 className="mt-3 font-display text-[19px] font-semibold text-ink">
