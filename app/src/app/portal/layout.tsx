@@ -1,6 +1,7 @@
 import { requireUser } from "@/server/session";
 import { PortalShell } from "@/components/portal-shell";
 import { NotificationBell } from "@/components/notification-bell";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { notify } from "@/server/modules/notifications/service";
 
 function timeAgo(d: Date): string {
@@ -28,9 +29,11 @@ export default async function PortalLayout({
       name={user.name}
       verificationStatus={user.verificationStatus}
       notificationBell={
-        <NotificationBell
-          unread={unread}
-          items={items.map((n) => ({
+        <>
+          <ThemeToggle />
+          <NotificationBell
+            unread={unread}
+            items={items.map((n) => ({
             id: n.id,
             type: n.type,
             title: n.title,
@@ -40,7 +43,8 @@ export default async function PortalLayout({
             timeISO: n.createdAt.toISOString(),
             readAt: n.readAt ? n.readAt.toISOString() : null,
           }))}
-        />
+          />
+        </>
       }
     >
       {children}

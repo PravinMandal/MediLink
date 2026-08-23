@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function MarketingLayout({
   children,
@@ -18,7 +19,7 @@ export default function MarketingLayout({
           <Link href="/" className="flex items-center gap-2.5" aria-label="MediLink home">
             <span
               aria-hidden
-              className="flex h-8 w-8 items-center justify-center rounded-md bg-pine font-display text-[15px] font-bold text-white"
+              className="flex h-8 w-8 items-center justify-center rounded-md bg-pine font-display text-[15px] font-bold text-on-pine"
             >
               M
             </span>
@@ -27,6 +28,7 @@ export default function MarketingLayout({
             </span>
           </Link>
           <nav aria-label="Site" className="flex items-center gap-0.5 sm:gap-2">
+            <ThemeToggle />
             {/* In-page sections are hidden on desktop behind the story flow;
                 on mobile there is no other navigation, so they stay visible. */}
             <Link
@@ -49,7 +51,7 @@ export default function MarketingLayout({
             </Link>
             <Link
               href="/sign-up"
-              className="rounded-md border border-pine bg-pine px-2.5 py-2 text-[13px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep sm:px-3.5 sm:text-[13.5px]"
+              className="rounded-md border border-pine bg-pine px-2.5 py-2 text-[13px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep sm:px-3.5 sm:text-[13.5px]"
             >
               Create account
             </Link>
@@ -65,7 +67,7 @@ export default function MarketingLayout({
             <div className="flex items-center gap-2">
               <span
                 aria-hidden
-                className="flex h-6 w-6 items-center justify-center rounded bg-pine font-display text-[11px] font-bold text-white"
+                className="flex h-6 w-6 items-center justify-center rounded bg-pine font-display text-[11px] font-bold text-on-pine"
               >
                 M
               </span>

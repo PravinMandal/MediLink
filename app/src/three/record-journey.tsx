@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -434,16 +434,16 @@ function CameraRig({ progress }: { progress: React.RefObject<number> }) {
   return null;
 }
 
-function Scene({ progress }: { progress: React.RefObject<number> }) {
+function Scene({ progress, dark }: { progress: React.RefObject<number>; dark: boolean }) {
   const gl = useThree((s) => s.gl);
   gl.toneMapping = THREE.ACESFilmicToneMapping;
-  gl.toneMappingExposure = 1.05;
+  gl.toneMappingExposure = dark ? 0.9 : 1.05;
 
   return (
     <>
-      <color attach="background" args={["#f7f8f6"]} />
-      <ambientLight intensity={1.1} color={"#ffffff"} />
-      <directionalLight position={[3, 5, 4]} intensity={1.35} color={"#ffffff"} />
+      <color attach="background" args={[dark ? "#0c1310" : "#f7f8f6"]} />
+      <ambientLight intensity={dark ? 0.85 : 1.1} color={"#ffffff"} />
+      <directionalLight position={[3, 5, 4]} intensity={dark ? 1.0 : 1.35} color={"#ffffff"} />
       <directionalLight position={[-4, -2, -3]} intensity={0.35} color={"#dfe8e2"} />
       <DocumentMesh progress={progress} />
       <ConsentGate progress={progress} />
@@ -469,6 +469,21 @@ export function RecordJourneyCanvas({
   /** false pauses the render loop entirely (offscreen). */
   active?: boolean;
 }) {
+  // Theme-aware background: dark mode renders the journey on the night-ward
+  // paper instead of the light lab sheet (canvas can't inherit CSS tokens).
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const read = () => setDark(el.dataset.theme === "dark");
+    const raf = requestAnimationFrame(read);
+    const obs = new MutationObserver(read);
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => {
+      cancelAnimationFrame(raf);
+      obs.disconnect();
+    };
+  }, []);
+
   return (
     <Canvas
       aria-hidden
@@ -478,7 +493,7 @@ export function RecordJourneyCanvas({
       gl={{ antialias: !lowDetail, powerPreference: "low-power" }}
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     >
-      <Scene progress={progress} />
+      <Scene progress={progress} dark={dark} />
     </Canvas>
   );
 }

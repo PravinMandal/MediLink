@@ -48,7 +48,7 @@ export function TimelineFilter({ basePath }: { basePath: string }) {
       className={
         "shrink-0 cursor-pointer rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors " +
         (kind === value
-          ? "border-pine bg-pine text-white"
+          ? "border-pine bg-pine text-on-pine"
           : "border-line-strong bg-paper-raised text-ink-soft hover:border-ink-faint hover:text-ink")
       }
     >

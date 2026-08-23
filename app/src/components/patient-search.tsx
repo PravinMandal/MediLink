@@ -26,7 +26,7 @@ export function PatientSearchForm({ initialQuery }: { initialQuery?: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="h-11 cursor-pointer rounded-md border border-pine bg-pine px-4 text-sm font-medium text-white transition-colors hover:bg-pine-deep disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-11 cursor-pointer rounded-md border border-pine bg-pine px-4 text-sm font-medium text-on-pine transition-colors hover:bg-pine-deep disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending ? (
           <span className="flex items-center gap-2">

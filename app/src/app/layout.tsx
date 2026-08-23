@@ -54,7 +54,16 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Pre-hydration theme: reads localStorage/system before paint so
+            dark mode never flashes. Must stay inline and blocking. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();`,
+          }}
+        />
+      </head>
       <body
         className={`${fraunces.variable} ${instrument.variable} ${plexMono.variable} antialiased`}
       >

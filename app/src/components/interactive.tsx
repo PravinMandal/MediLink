@@ -91,7 +91,7 @@ export function CitationChips({
     const base =
       "num inline-flex h-4 min-h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] px-1.5 text-[10px] font-semibold leading-none transition-colors";
     if (trust === "verified")
-      return `${base} border border-pine/40 bg-pine-tint text-pine-ink hover:border-pine hover:bg-pine hover:text-white`;
+      return `${base} border border-pine/40 bg-pine-tint text-pine-ink hover:border-pine hover:bg-pine hover:text-on-pine`;
     if (trust === "self_reported")
       return `${base} border border-dashed border-ink-faint/60 bg-transparent text-ink-faint hover:border-ink-faint hover:text-ink`;
     return `${base} border border-ink-faint/50 bg-paper-raised text-ink-soft hover:border-ink-faint hover:text-ink`;

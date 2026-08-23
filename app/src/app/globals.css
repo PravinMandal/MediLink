@@ -7,6 +7,10 @@
  * medical seals. Cool clinical paper, deep pine ink, one reserved emergency
  * red. Data and citations are set in mono — the voice of the lab printout.
  * Calm, precise, trustworthy; decoration spent only on the citation chain.
+ *
+ * Dark mode: "night ward" — the same instrument under night lighting.
+ * Near-black pine-tinted surfaces (never pure black), one green accent,
+ * ink steps inverted, tints become translucent overlays on the dark paper.
  */
 
 @theme {
@@ -25,10 +29,16 @@
   --color-pine-deep: #0e4036;
   --color-pine-tint: #e3efea;
   --color-pine-ink: #0d3a30;
+  /* Text/icons placed on solid pine fills (buttons, badges, tiles). */
+  --color-on-pine: #ffffff;
+  /* Sub-labels on pine fills (70% opacity variants break contrast). */
+  --color-on-pine-soft: #d7ebe4;
 
   --color-alert: #b3261e;
   --color-alert-deep: #8f1e18;
   --color-alert-tint: #fbeae9;
+  --color-on-alert: #ffffff;
+  --color-on-alert-soft: #f3d9d6;
 
   --color-amber: #92610f;
   --color-amber-tint: #fcf3e3;
@@ -41,8 +51,47 @@
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
+/* Night ward — same tokens, night values. Applied by the pre-hydration
+   script (layout.tsx) or the toggle; overrides cascade over @theme. */
+[data-theme="dark"] {
+  --color-paper: #0c1310;
+  --color-paper-raised: #121b17;
+  --color-paper-sunk: #0a100d;
+
+  --color-ink: #e7ece9;
+  --color-ink-soft: #a3b0aa;
+  --color-ink-faint: #8d9c95;
+
+  --color-line: #24302b;
+  --color-line-strong: #35443d;
+
+  --color-pine: #4dbfa4;
+  --color-pine-deep: #79d3bd;
+  --color-pine-tint: #143528;
+  --color-pine-ink: #9fe3d0;
+  /* Dark pine is LIGHT — text on it must be dark. */
+  --color-on-pine: #06231c;
+  --color-on-pine-soft: #0a3529;
+
+  --color-alert: #ff8a80;
+  --color-alert-deep: #ffb4ab;
+  --color-alert-tint: #3a1714;
+  --color-on-alert: #2a0503;
+  --color-on-alert-soft: #40100c;
+
+  --color-amber: #ffca7a;
+  --color-amber-tint: #3a2a10;
+
+  --color-info: #7fc4e8;
+  --color-info-tint: #12293a;
+}
+
 html {
   color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -67,8 +116,34 @@ body {
 
 /* Print isolation: body.printing-card hides everything but the marked
    .print-card element. Narrow artifacts (emergency card) center at 420px;
-   document-like ones (summary) print full width via .print-full. */
+   document-like ones (summary) print full width via .print-full.
+   Printing always uses the LIGHT palette — paper is paper. */
 @media print {
+  html[data-theme="dark"] {
+    --color-paper: #f7f8f6;
+    --color-paper-raised: #ffffff;
+    --color-paper-sunk: #eff1ee;
+    --color-ink: #1b2420;
+    --color-ink-soft: #5a6660;
+    --color-ink-faint: #5f6b64;
+    --color-line: #e4e8e2;
+    --color-line-strong: #cbd2cc;
+    --color-pine: #14594b;
+    --color-pine-deep: #0e4036;
+    --color-pine-tint: #e3efea;
+    --color-pine-ink: #0d3a30;
+    --color-on-pine: #ffffff;
+    --color-on-pine-soft: #d7ebe4;
+    --color-alert: #b3261e;
+    --color-alert-deep: #8f1e18;
+    --color-alert-tint: #fbeae9;
+    --color-on-alert: #ffffff;
+    --color-on-alert-soft: #f3d9d6;
+    --color-amber: #92610f;
+    --color-amber-tint: #fcf3e3;
+    --color-info: #1d5d8a;
+    --color-info-tint: #e8f1f7;
+  }
   body.printing-card * {
     visibility: hidden;
   }
@@ -103,6 +178,13 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-ink-faint);
+}
+
+/* Eyebrows sitting on filled (non-paper) surfaces: the utility text-color
+   classes can't reliably override .eyebrow's own color at equal specificity,
+   so this variant sets it explicitly. */
+.eyebrow-on-fill {
+  color: inherit;
 }
 
 /* Verified seal — the trust mark. Used sparingly. */

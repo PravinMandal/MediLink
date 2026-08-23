@@ -103,7 +103,7 @@ export function EvidenceCard() {
                     {claim.sources.map((s, j) => (
                       <span
                         key={j}
-                        className="num flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-pine/50 bg-pine-tint px-1.5 text-[11px] font-semibold text-pine-ink transition-colors group-hover:border-pine group-hover:bg-pine group-hover:text-white"
+                        className="num flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-pine/50 bg-pine-tint px-1.5 text-[11px] font-semibold text-pine-ink transition-colors group-hover:border-pine group-hover:bg-pine group-hover:text-on-pine"
                       >
                         {j + 1}
                       </span>

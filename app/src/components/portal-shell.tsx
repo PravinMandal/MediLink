@@ -69,7 +69,7 @@ export function PortalShell({
           <Link href="/portal" className="flex items-center gap-2.5">
             <span
               aria-hidden
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-pine font-display text-[13px] font-bold text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-pine font-display text-[13px] font-bold text-on-pine"
             >
               M
             </span>

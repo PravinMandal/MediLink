@@ -72,8 +72,12 @@ class SupabaseStorage implements StorageAdapter {
   ) {}
 
   private headers(json = false) {
+    // New sb_secret_ keys are not JWTs; the Storage API requires the raw
+    // key in `apikey` alongside the Bearer token or it rejects with
+    // "Invalid Compact JWS".
     return {
       Authorization: `Bearer ${this.serviceKey}`,
+      apikey: this.serviceKey,
       ...(json ? { "Content-Type": "application/json" } : {}),
     };
   }

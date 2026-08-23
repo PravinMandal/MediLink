@@ -24,7 +24,7 @@ export default async function SignInPage({
         <Link href="/" className="mb-8 flex items-center gap-2.5">
           <span
             aria-hidden
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-pine font-display text-[15px] font-bold text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-pine font-display text-[15px] font-bold text-on-pine"
           >
             M
           </span>

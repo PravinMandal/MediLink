@@ -61,7 +61,7 @@ export function RouteError({
         <button
           type="button"
           onClick={reset}
-          className="mt-1 cursor-pointer rounded-md border border-pine bg-pine px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-pine-deep"
+          className="mt-1 cursor-pointer rounded-md border border-pine bg-pine px-4 py-2 text-sm font-medium text-on-pine transition-colors hover:bg-pine-deep"
         >
           Try again
         </button>

@@ -39,10 +39,10 @@ export function RecordPreviewSection() {
 
             {/* glance band */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <div className="relative flex flex-col justify-between overflow-hidden rounded-lg bg-pine p-4 text-white">
-                <p className="eyebrow text-white/70">Blood group</p>
+              <div className="relative flex flex-col justify-between overflow-hidden rounded-lg bg-pine p-4 text-on-pine">
+                <p className="eyebrow eyebrow-on-fill text-on-pine-soft">Blood group</p>
                 <p className="num font-display text-4xl font-bold leading-none tracking-tight">B+</p>
-                <p className="mt-1 text-[11px] leading-tight text-white/80">lab-verified · ⚠ conflicts with self-report</p>
+                <p className="mt-1 text-[11px] leading-tight text-on-pine-soft">lab-verified · ⚠ conflicts with self-report</p>
               </div>
               <div className="rounded-lg border-l-2 border-l-alert bg-paper-raised p-4">
                 <p className="eyebrow mb-2 text-alert">Red-line allergies</p>

@@ -27,13 +27,13 @@ export default function MarketingHome() {
 
       {/* ---------------- Hero ---------------- */}
       <section className="relative overflow-hidden border-b border-line">
-        {/* ECG graph-paper backdrop */}
+        {/* ECG graph-paper backdrop (theme-aware via color-mix on --pine) */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
-              "linear-gradient(to right, rgba(20,89,75,0.055) 1px, transparent 1px), linear-gradient(to bottom, rgba(20,89,75,0.055) 1px, transparent 1px)",
+              "linear-gradient(to right, color-mix(in srgb, var(--color-pine) 9%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--color-pine) 9%, transparent) 1px, transparent 1px)",
             backgroundSize: "28px 28px",
             maskImage:
               "radial-gradient(ellipse 90% 80% at 60% 10%, black 30%, transparent 75%)",
@@ -65,7 +65,7 @@ export default function MarketingHome() {
             >
               <Link
                 href="/sign-in"
-                className="inline-flex h-11 w-full items-center justify-center rounded-md border border-pine bg-pine px-5 text-[14.5px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep sm:w-auto"
+                className="inline-flex h-11 w-full items-center justify-center rounded-md border border-pine bg-pine px-5 text-[14.5px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep sm:w-auto"
               >
                 Open the live demo
               </Link>
@@ -319,7 +319,7 @@ export default function MarketingHome() {
           className="pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
-              "linear-gradient(to right, rgba(20,89,75,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(20,89,75,0.05) 1px, transparent 1px)",
+              "linear-gradient(to right, color-mix(in srgb, var(--color-pine) 8%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--color-pine) 8%, transparent) 1px, transparent 1px)",
             backgroundSize: "28px 28px",
             maskImage: "radial-gradient(ellipse 70% 90% at 50% 100%, black 20%, transparent 70%)",
             WebkitMaskImage: "radial-gradient(ellipse 70% 90% at 50% 100%, black 20%, transparent 70%)",
@@ -338,7 +338,7 @@ export default function MarketingHome() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/sign-in"
-                className="inline-flex h-11 items-center justify-center rounded-md border border-pine bg-pine px-6 text-[14.5px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep"
+                className="inline-flex h-11 items-center justify-center rounded-md border border-pine bg-pine px-6 text-[14.5px]] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep"
               >
                 Open the live demo
               </Link>

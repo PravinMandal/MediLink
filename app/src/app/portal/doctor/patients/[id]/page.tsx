@@ -216,7 +216,7 @@ export default async function DoctorPatientPage({
   return (
     <>
       {viaEmergency ? (
-        <div className="mb-4 rounded-lg border border-alert bg-alert px-4 py-3 text-white">
+        <div className="mb-4 rounded-lg border border-alert bg-alert px-4 py-3 text-on-alert">
           <p className="text-sm font-semibold">
             EMERGENCY ACCESS ACTIVE — critical scopes only, 60-minute window, patient notified,
             event audited for review.
@@ -234,14 +234,15 @@ export default async function DoctorPatientPage({
       {/* At a glance — the "10-second" band: blood group anchor, red-line
           allergies, active problems, last encounter, in one viewport. */}
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        {/* Blood group anchor — the single most emergency-critical datum */}
+        {/* Blood group anchor — the single most emergency-critical datum.
+            Not a Card: it's a filled tile, not a paper surface. */}
         {can("demographics") ? (
-          <Card className="relative flex flex-col justify-between overflow-hidden bg-pine p-4 text-white">
-            <p className="eyebrow text-white/70">Blood group</p>
+          <div className="relative flex flex-col justify-between overflow-hidden rounded-[10px] border border-pine bg-pine p-4 text-on-pine">
+            <p className="eyebrow eyebrow-on-fill text-on-pine-soft">Blood group</p>
             <p className="num font-display text-4xl font-bold leading-none tracking-tight">
               {bloodGroup?.verified?.value ?? bloodGroup?.selfReported ?? "—"}
             </p>
-            <p className="mt-1 text-[11px] leading-tight text-white/80">
+            <p className="mt-1 text-[11px] leading-tight text-on-pine-soft">
               {bloodGroup?.verified
                 ? "lab-verified"
                 : bloodGroup?.selfReported
@@ -249,7 +250,7 @@ export default async function DoctorPatientPage({
                   : "unknown"}
               {bloodGroup?.conflict ? " · ⚠ conflicts with self-report" : ""}
             </p>
-          </Card>
+          </div>
         ) : null}
         <Card className="border-l-2 border-l-alert p-4">
           <p className="eyebrow mb-2 text-alert">Red-line allergies</p>

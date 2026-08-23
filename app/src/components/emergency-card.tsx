@@ -242,11 +242,11 @@ export function EmergencyCard({ data }: { data: EmergencyCardData }) {
       className="print-card relative overflow-hidden rounded-xl border-2 border-alert bg-paper-raised"
     >
       {/* header band */}
-      <div className="flex items-center justify-between bg-alert px-4 py-2.5 text-white">
+      <div className="flex items-center justify-between bg-alert px-4 py-2.5 text-on-alert">
         <p className="font-display text-[15px] font-bold uppercase tracking-wide">
           ⛑ Medical alert
         </p>
-        <p className="num text-[10px] font-medium uppercase tracking-widest text-white/85">
+        <p className="num text-[10px] font-medium uppercase tracking-widest text-on-alert-soft">
           MediLink verified record
         </p>
       </div>

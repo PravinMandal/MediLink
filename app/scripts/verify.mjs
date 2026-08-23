@@ -26,6 +26,69 @@ async function fresh(viewport) {
 const DESKTOP = { width: 1280, height: 800 };
 const MOBILE = { width: 375, height: 667 };
 
+/* ---------- Dark mode ---------- */
+{
+  const page = await fresh(DESKTOP);
+  await page.goto(base + "/", { waitUntil: "networkidle" });
+  // Toggle exists and switching to dark flips the theme + body colors
+  const toggle = page.locator('button[aria-label*="theme" i]').first();
+  const hasToggle = (await toggle.count()) > 0;
+  record("theme toggle present (marketing)", hasToggle);
+  if (hasToggle) {
+    await toggle.click();
+    await page.waitForTimeout(600);
+    const dark = await page.evaluate(() => {
+      const html = document.documentElement;
+      const bg = getComputedStyle(document.body).backgroundColor;
+      return { attr: html.dataset.theme, bg };
+    });
+    const ok = dark.attr === "dark" && !/255|247/.test(dark.bg);
+    record("toggle switches to dark theme", ok, JSON.stringify(dark));
+    // No unreadable surfaces: sample computed text vs background contrast on key elements
+    const contrastOk = await page.evaluate(() => {
+      const els = document.querySelectorAll("h1, h2, p, a, button");
+      let bad = 0;
+      for (const el of els) {
+        const s = getComputedStyle(el);
+        if (s.visibility === "hidden" || s.opacity === "0") continue;
+        const lum = (c) => {
+          const m = c.match(/\d+/g);
+          if (!m) return null;
+          const [r, g, b] = m.map(Number);
+          const f = (v) => {
+            v /= 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+          };
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        let n = el;
+        let bg = null;
+        while (n && n !== document.documentElement) {
+          const b = getComputedStyle(n).backgroundColor;
+          if (b && !b.includes("0, 0, 0, 0")) {
+            bg = b;
+            break;
+          }
+          n = n.parentElement;
+        }
+        if (!bg) bg = getComputedStyle(document.body).backgroundColor;
+        const l1 = lum(s.color);
+        const l2 = lum(bg);
+        if (l1 == null || l2 == null) continue;
+        const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+        if (ratio < 2.5) bad++; // very low = likely broken token
+      }
+      return bad;
+    });
+    record("dark mode: no broken-contrast elements (<2.5:1)", contrastOk === 0, `${contrastOk} bad`);
+    // Persistence across navigation
+    await page.goto(base + "/sign-in", { waitUntil: "networkidle" });
+    const persisted = await page.evaluate(() => document.documentElement.dataset.theme);
+    record("dark theme persists across navigation", persisted === "dark");
+    await page.close();
+  }
+}
+
 /* ---------- Marketing page ---------- */
 {
   const page = await fresh(DESKTOP);

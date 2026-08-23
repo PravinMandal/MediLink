@@ -8,13 +8,13 @@ import type { ComponentProps, ReactNode } from "react";
 
 const buttonVariants = {
   primary:
-    "bg-pine text-white border border-pine hover:bg-pine-deep hover:border-pine-deep disabled:opacity-50",
+    "bg-pine text-on-pine border border-pine hover:bg-pine-deep hover:border-pine-deep disabled:opacity-50",
   secondary:
     "bg-paper-raised text-ink border border-line-strong hover:border-ink-faint hover:bg-paper-sunk disabled:opacity-50",
   ghost:
     "bg-transparent text-ink-soft border border-transparent hover:text-ink hover:bg-paper-sunk disabled:opacity-50",
   danger:
-    "bg-alert text-white border border-alert hover:bg-alert-deep hover:border-alert-deep disabled:opacity-50",
+    "bg-alert text-on-alert border border-alert hover:bg-alert-deep hover:border-alert-deep disabled:opacity-50",
 };
 
 const buttonSizes = {
