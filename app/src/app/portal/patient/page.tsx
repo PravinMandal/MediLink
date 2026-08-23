@@ -6,6 +6,7 @@ import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { records } from "@/server/modules/records/service";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
+import { summarizer } from "@/server/modules/ai/summarize";
 import { notify } from "@/server/modules/notifications/service";
 import { audit } from "@/server/modules/audit/service";
 import { formatDate, formatTime, TRUST_LABEL, formatAuditAction } from "@/lib/utils";
@@ -32,7 +33,7 @@ export default async function PatientDashboard() {
     );
   }
 
-  const [conds, allergies, meds, docs, bloodGroup, conflicts, notifications, accessLog] =
+  const [conds, allergies, meds, docs, bloodGroup, conflicts, notifications, accessLog, summary] =
     await Promise.all([
       records.currentConditions(patient.id),
       records.currentAllergies(patient.id),
@@ -42,6 +43,8 @@ export default async function PatientDashboard() {
       contradictionEngine.openFor(patient.id),
       notify.forUser(user.id, 6),
       audit.forPatient(patient.id, 6),
+      // Self-access: the patient reads their own summary ungated.
+      summarizer.latestFor(patient.id, null),
     ]);
 
   const criticalConflicts = conflicts.filter((c) => c.severity === "critical");
@@ -99,6 +102,59 @@ export default async function PatientDashboard() {
               </div>
             ))}
           </dl>
+        </Card>
+
+        {/* Own SBAR summary — every claim cited, readable by the patient */}
+        <Card className="md:col-span-2">
+          <CardHeader
+            eyebrow="AI-generated summary"
+            title="Your SBAR summary"
+            action={
+              summary ? (
+                <Badge tone={summary.summary.mode === "llm" ? "info" : "neutral"}>
+                  {summary.summary.mode === "llm" ? `LLM · ${summary.summary.model}` : "deterministic"}
+                </Badge>
+              ) : undefined
+            }
+          />
+          {summary ? (
+            <div className="space-y-4 px-4 py-4 sm:px-5">
+              {(
+                [
+                  ["situation", "Situation"],
+                  ["background", "Background"],
+                  ["assessment", "Assessment"],
+                  ["plan", "Plan"],
+                ] as const
+              ).map(([section, label]) => {
+                const claims = summary.claims.filter((c) => c.section === section);
+                if (!claims.length) return null;
+                return (
+                  <section key={section}>
+                    <p className="eyebrow mb-1.5">{label}</p>
+                    <ul className="space-y-1.5">
+                      {claims.slice(0, 4).map((c) => (
+                        <li key={c.id} className="text-[13.5px] leading-relaxed text-ink">
+                          {c.text}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+              <p className="border-t border-line pt-3 text-[11px] text-ink-faint">
+                AI-generated — every claim on your doctor&apos;s view links to its source record.
+                Generated {formatDate(summary.summary.createdAt)}.
+              </p>
+            </div>
+          ) : (
+            <div className="px-4 py-4 sm:px-5">
+              <EmptyState
+                title="No summary yet"
+                body="Ask your doctor to generate one at your next visit — every claim will carry citations."
+              />
+            </div>
+          )}
         </Card>
 
         {/* Conditions */}
