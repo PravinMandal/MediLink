@@ -68,3 +68,7 @@ Deployed the full session state to Vercel production (`npx vercel --prod` → Re
 
 ## Round 16 — 2026-08-23 09:14
 Shipped: admin oversight demo state — seeded reviewed break-glass event (reviewer note, notified timestamp), review-notes display, latest-10 badge. Supabase reseeded via env-scoped run (storage kept local for seeding; documented). Redeployed and re-verified on production: admin checks 4/4 + full suite 26/26.
+
+## Round 17 — 2026-08-23 09:28
+Juror round 4 (production, DOM-probe): **overall 9.1/10** — marketing 9.2, doctor record 9.4, consents/timeline 9.0, admin 9.0, emergency card 9.3, org console 8.7. "Genuinely SOTD-caliber product writing and IA."
+Fixes shipped: hero H1 spacing ({"\n"} for screen readers/copy-paste), filter-aware timeline empty state, org grant added to seed (org console consent registry populated — verified 4/4 on production). Redeployed; production 26/26 (one transient canvas-mount network reset re-run clean).
