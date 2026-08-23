@@ -39,6 +39,7 @@ let search: typeof import("../src/server/modules/search/service").search;
 let summarizer: typeof import("../src/server/modules/ai/summarize").summarizer;
 let ingestDocument: typeof import("../src/server/modules/documents/pipeline").ingestDocument;
 let notify: typeof import("../src/server/modules/notifications/service").notify;
+let contradictionEngine: typeof import("../src/server/modules/ai/contradictions").contradictionEngine;
 
 const PASSWORD = "Password123!";
 
@@ -81,6 +82,7 @@ beforeAll(async () => {
   ({ summarizer } = await import("../src/server/modules/ai/summarize"));
   ({ ingestDocument } = await import("../src/server/modules/documents/pipeline"));
   ({ notify } = await import("../src/server/modules/notifications/service"));
+  ({ contradictionEngine } = await import("../src/server/modules/ai/contradictions"));
 
   // Actors
   doctorAId = await signUp("a.doctor@test.local", "Dr. Alpha", "doctor");
@@ -399,6 +401,24 @@ describe("Verified data outranks self-reported", () => {
     expect(bg.verified?.value).toBe("O-");
     expect(bg.selfReported).toBe("A+");
     expect(bg.conflict).toBe(true);
+  });
+
+  it("contradiction engine: re-detection refreshes, doesn't duplicate or collapse", async () => {
+    const { eq, and } = await import("drizzle-orm");
+    await contradictionEngine.detect(patientAId);
+    const openAfter1 = await db
+      .select()
+      .from(schema.conflicts)
+      .where(and(eq(schema.conflicts.patientId, patientAId), eq(schema.conflicts.status, "open")));
+    const n1 = openAfter1.length;
+    expect(n1).toBeGreaterThan(0);
+    // Second detection must not duplicate rows.
+    await contradictionEngine.detect(patientAId);
+    const openAfter2 = await db
+      .select()
+      .from(schema.conflicts)
+      .where(and(eq(schema.conflicts.patientId, patientAId), eq(schema.conflicts.status, "open")));
+    expect(openAfter2.length).toBe(n1);
   });
 });
 
