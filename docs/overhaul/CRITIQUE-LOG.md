@@ -98,3 +98,4 @@ Shipped: patient documents page extraction status chips + staleness rule (parity
 
 ## Round 24 — 2026-08-23 10:16 — performance probe
 Production perf probe: marketing initial JS 164KB (~50KB gz) with the 232KB three.js chunk loading only on scroll (lazy-load verified working as designed); sign-in DCL 379ms; doctor record DCL 404ms (wall time dominated by DB round-trips, expected for force-dynamic consent-scoped pages). Sign-up demo hint added. Deployed; production 26/26.
+Also verified behaviorally on production: prefers-reduced-motion → no canvas mounts, DOM fallback carries the story; emergency-card print emulation produces a PDF containing exactly the card content (medical alert, B+, allergies, ICE, QR caption) with zero portal chrome.
