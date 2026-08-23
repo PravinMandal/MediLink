@@ -388,6 +388,17 @@ Advice: cardiac rehab, review 6 weeks.`,
     granteeUserId: meeraUserId,
   });
   // Note: Dr. Arjun has NO grant — demo the request/grant flow with him.
+  // Rahul also grants Sunrise Diagnostics document access — the org console's
+  // consent registry and upload flow have data on first run.
+  await consent.grant({
+    patientId: rahul.id,
+    patientUserId: rahulUserId,
+    granteeType: "organization",
+    granteeOrganizationId: sunrise.organization.id,
+    scopes: ["documents", "lab_results"],
+    purpose: "treatment",
+    days: 30,
+  });
 
   /* ---------------------------------------------------------------- */
   console.log("→ Additional synthetic patients…");

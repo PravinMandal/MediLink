@@ -99,8 +99,12 @@ export default async function PatientTimeline({
       </Suspense>
       {(q?.trim() || kind) && events.length === 0 ? (
         <EmptyState
-          title={`No matches${q ? ` for “${q.trim()}”` : ""}${kind ? ` in ${kind}` : ""}`}
-          body="Try a different term or clear the filters."
+          title={`No matches${q ? ` for “${q.trim()}”` : ""}${kind ? ` in ${kind.replace(/_/g, " ")}` : ""}`}
+          body={
+            kind
+              ? "A kind filter is active — it may be hiding the match. Clear the filters above and try again."
+              : "Try a different term or clear the filters."
+          }
         />
       ) : events.length === 0 ? (
         <EmptyState title="Nothing on the timeline yet" body="Verified doctors and labs add events as they care for you." />

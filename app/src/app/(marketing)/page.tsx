@@ -45,8 +45,7 @@ export default function MarketingHome() {
           <div data-hero style={heroStagger(0)}>
             <p className="eyebrow">Provenance-aware health records · India</p>
             <h1 className="mt-4 font-display text-[clamp(2.15rem,7.5vw,4.2rem)] font-semibold leading-[1.08] tracking-[-0.01em] text-ink sm:leading-[1.04] sm:tracking-[-0.015em]">
-              A patient&apos;s history,
-              <br />
+              A patient&apos;s history,{"\n"}
               <span className="text-pine">with receipts.</span>
             </h1>
             <p
