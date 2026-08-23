@@ -49,7 +49,7 @@ Gates: 30/30 tests, tsc clean, lint 0 err, 26/26 behavioral, consent-inbox E2E 3
 
 ## Round 12 — 2026-08-23 08:45
 Shipped: org console extraction status chips + retry (parity with doctor Documents tab); hero "hash seal" signature motion moment (types a sha-256 digest, seals with ✓; reduced-motion → static sealed state; IntersectionObserver-gated). Two react-hooks/purity lint errors caught and fixed (module-scope Date.now, effect-safe timeout chain).
-Gates: 26/26 checks, seal renders + seals in-browser, tsc clean, lint 0 err.
+Gates: 26/26 checks, seal renders + seals in-browser, tsc clean, lint 0 err, 30/30 tests, production build green.
 
 ## Round 13 — 2026-08-23 08:47 (Gatekeeper security review)
 Gatekeeper audited all session changes. Findings + fixes:
@@ -61,9 +61,10 @@ Gates: 31/31 tests, tsc clean, lint 0 err.
 
 ## Round 14 — 2026-08-23 08:57
 Shipped: ABHA number field (D24) — profile input + doctor header display, migration 0004, E2E-verified (save normalization + header display). Timeline document events now link to the source file. Found and fixed an ops bug: db:migrate/db:seed didn't load .env, silently migrating local PGlite instead of the configured Supabase — npm scripts now use `tsx --env-file=.env`.
-Gates: 31/31 tests, 26/26 behavioral checks, tsc clean.
+Gates: 31/31 tests, 26/26 behavioral checks, tsc clean, lint 0 err, production build green.
 
 ## Round 15 — 2026-08-23 09:10 — PRODUCTION DEPLOY ✅
 Deployed the full session state to Vercel production (`npx vercel --prod` → Ready, bom1). Re-verified against https://medilink-health.vercel.app: **26/26 behavioral checks pass on production** — marketing desktop+mobile with 3D canvas, doctor/patient/admin flows, glance band, record search, all 6 patient mobile routes, emergency card with QR (721 modules), notification bell, /api/health {ok, db:up}. (Preview deployment URLs lack env vars; the custom domain carries them.)
 
-## Round 3 � 2026-08-23 07:22,
+## Round 16 — 2026-08-23 09:14
+Shipped: admin oversight demo state — seeded reviewed break-glass event (reviewer note, notified timestamp), review-notes display, latest-10 badge. Supabase reseeded via env-scoped run (storage kept local for seeding; documented). Redeployed and re-verified on production: admin checks 4/4 + full suite 26/26.
