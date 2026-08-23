@@ -51,6 +51,6 @@ docs/decisions.md D16–D27. Notable researched refusals: React Compiler not ena
 
 ## Evidence
 - `npm test` 32/32 · `npx tsc --noEmit` clean · `npm run lint` 0 errors, 0 warnings · `npm run build` green.
-- `node scripts/verify.mjs` 26/26 on localhost AND production; E2E scripts all green; QR decode verified.
+- `node scripts/verify.mjs` 26/26 on localhost AND production; E2E scripts all green (consent-inbox, timeline, ABHA, org-console, admin, QR, scan-path, axe, break-glass, signup-journey); QR decode verified; print + reduced-motion behavior verified on production.
 - Production: https://medilink-health.vercel.app/api/health → `{ok:true,db:"up"}`.
-- Full round-by-round account: docs/overhaul/CRITIQUE-LOG.md (23 rounds).
+- Full round-by-round account: docs/overhaul/CRITIQUE-LOG.md (31 rounds).
