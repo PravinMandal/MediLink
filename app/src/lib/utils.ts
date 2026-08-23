@@ -111,5 +111,7 @@ export function ageFrom(dob: string | null | undefined): number | null {
   if (!dob) return null;
   const d = new Date(dob);
   if (Number.isNaN(d.getTime())) return null;
-  return Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000));
+  const years = Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000));
+  // Future DOBs are data errors, not negative ages.
+  return years >= 0 ? years : null;
 }

@@ -24,18 +24,22 @@ async function upsertConflict(input: {
   details: Record<string, unknown>;
 }) {
   const key = conflictKey(input.kind, JSON.stringify(input.details));
+  // Dedupe on the content key (not just kind): distinct analytes/allergies
+  // with conflicts must coexist as separate rows.
   const existing = await db
-    .select({ id: conflicts.id })
+    .select({ id: conflicts.id, details: conflicts.details })
     .from(conflicts)
-    .where(and(eq(conflicts.patientId, input.patientId), eq(conflicts.kind, input.kind)));
-  // Cheap dedupe: skip if an open conflict of same kind with same key-ish details exists
-  const same = existing.length; // per-kind open conflict refresh
-  if (same > 0) {
-    // refresh detection timestamp only
+    .where(and(eq(conflicts.patientId, input.patientId), eq(conflicts.kind, input.kind), eq(conflicts.status, "open")));
+  const same = existing.find(
+    (row) =>
+      (row.details as Record<string, unknown> | null)?._key === key,
+  );
+  if (same) {
+    // refresh detection timestamp only — details are unchanged
     await db
       .update(conflicts)
-      .set({ details: input.details, detectedAt: new Date() })
-      .where(and(eq(conflicts.patientId, input.patientId), eq(conflicts.kind, input.kind), eq(conflicts.status, "open")));
+      .set({ detectedAt: new Date() })
+      .where(eq(conflicts.id, same.id));
     return;
   }
   await db.insert(conflicts).values({
@@ -193,13 +197,29 @@ export const contradictionEngine = {
   },
 
   async resolve(conflictId: string, resolvedBy: string, note?: string) {
+    // Preserve the conflict evidence: the resolution note is merged INTO the
+    // existing details (replacing them would destroy what was conflicted).
+    if (note) {
+      const [existing] = await db
+        .select({ details: conflicts.details })
+        .from(conflicts)
+        .where(eq(conflicts.id, conflictId));
+      const details = {
+        ...((existing?.details as Record<string, unknown> | null) ?? {}),
+        resolutionNote: note,
+      };
+      await db
+        .update(conflicts)
+        .set({ status: "resolved", resolvedBy, resolvedAt: new Date(), details })
+        .where(eq(conflicts.id, conflictId));
+      return;
+    }
     await db
       .update(conflicts)
       .set({
         status: "resolved",
         resolvedBy,
         resolvedAt: new Date(),
-        details: note ? { resolutionNote: note } : undefined,
       })
       .where(eq(conflicts.id, conflictId));
   },

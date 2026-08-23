@@ -90,6 +90,11 @@ export async function signUpAction(
     if (/already|exist/i.test(message)) {
       return { error: "An account with this email already exists. Sign in instead." };
     }
+    // Better Auth rejects weak/breached passwords with distinct messages —
+    // surface them as actionable password feedback instead of a generic error.
+    if (/password/i.test(message) && /weak|common|breached|too/i.test(message)) {
+      return { error: "Choose a stronger password — common or breached passwords are rejected." };
+    }
     return { error: "Could not create the account. Try again." };
   }
 
@@ -97,8 +102,12 @@ export async function signUpAction(
   try {
     await auth.api.signInEmail({ body: { email, password } } as never);
   } catch {
-    redirect("/sign-in");
+    // Account WAS created — tell the user instead of a bare sign-in page.
+    redirect("/sign-in?registered=1");
   }
+  // Doctors land on verification — their obvious next step — not the empty
+  // patient-search home.
+  if (role === "doctor") redirect("/portal/doctor/verification");
   redirect(portalHomeForRole(role as User["role"]));
 }
 

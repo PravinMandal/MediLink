@@ -72,3 +72,6 @@ Shipped: admin oversight demo state — seeded reviewed break-glass event (revie
 ## Round 17 — 2026-08-23 09:28
 Juror round 4 (production, DOM-probe): **overall 9.1/10** — marketing 9.2, doctor record 9.4, consents/timeline 9.0, admin 9.0, emergency card 9.3, org console 8.7. "Genuinely SOTD-caliber product writing and IA."
 Fixes shipped: hero H1 spacing ({"\n"} for screen readers/copy-paste), filter-aware timeline empty state, org grant added to seed (org console consent registry populated — verified 4/4 on production). Redeployed; production 26/26 (one transient canvas-mount network reset re-run clean).
+
+## Round 18 — 2026-08-23 09:36
+Shipped: patient dashboard "Your SBAR summary" card — the patient finally sees their own cited summary (self-access ungated), seeded summary renders full SBAR content. Deployed; production 26/26.

@@ -9,9 +9,9 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; registered?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, registered } = await searchParams;
   // Real session check (not cookie optimism) — stale cookies render the form.
   const user = await getSessionUser();
   // Same guard as auth-actions: "/" + non-slash start blocks "//evil.com"
@@ -35,6 +35,11 @@ export default async function SignInPage({
         <h1 className="font-display text-[24px] font-semibold leading-tight text-ink">
           Welcome back
         </h1>
+        {registered ? (
+          <p className="mb-2 mt-2 rounded-md border border-pine/40 bg-pine-tint px-3 py-2 text-[13px] text-pine-ink" role="status">
+            Account created — sign in below.
+          </p>
+        ) : null}
         <p className="mb-6 mt-1 text-sm text-ink-soft">
           Sign in to your health record.
         </p>
