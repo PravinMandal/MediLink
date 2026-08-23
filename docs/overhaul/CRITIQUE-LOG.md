@@ -99,3 +99,6 @@ Shipped: patient documents page extraction status chips + staleness rule (parity
 ## Round 24 — 2026-08-23 10:16 — performance probe
 Production perf probe: marketing initial JS 164KB (~50KB gz) with the 232KB three.js chunk loading only on scroll (lazy-load verified working as designed); sign-in DCL 379ms; doctor record DCL 404ms (wall time dominated by DB round-trips, expected for force-dynamic consent-scoped pages). Sign-up demo hint added. Deployed; production 26/26.
 Also verified behaviorally on production: prefers-reduced-motion → no canvas mounts, DOM fallback carries the story; emergency-card print emulation produces a PDF containing exactly the card content (medical alert, B+, allergies, ICE, QR caption) with zero portal chrome.
+
+## Round 25 — 2026-08-23 10:33 (Explorer-4 deep marketing)
+Shipped: journey DOM rail now syncs with scroll progress (active step highlighted, aria-current="step"); honesty fixes — stale "EXPIRES 23 AUG" magic dates replaced with relative phrasing, "preserved forever" → "stays unchanged", footer ABDM claim qualified (ABHA supported today, HPR/HFR planned); lowDetail tier re-evaluates on resize (tablet rotation); file route prefers a 5-min signed Supabase redirect post-access-check (bytes bypass the function; local storage still streams). Deployed; production 26/26.
