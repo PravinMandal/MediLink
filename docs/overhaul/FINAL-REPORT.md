@@ -50,7 +50,7 @@ docs/decisions.md D16–D27. Notable researched refusals: React Compiler not ena
 - Vercel Hobby non-commercial clause (stakeholder Q1).
 
 ## Evidence
-- `npm test` 31/31 · `npx tsc --noEmit` clean · `npm run lint` 0 errors · `npm run build` green.
+- `npm test` 32/32 · `npx tsc --noEmit` clean · `npm run lint` 0 errors, 0 warnings · `npm run build` green.
 - `node scripts/verify.mjs` 26/26 on localhost AND production; E2E scripts all green; QR decode verified.
 - Production: https://medilink-health.vercel.app/api/health → `{ok:true,db:"up"}`.
 - Full round-by-round account: docs/overhaul/CRITIQUE-LOG.md (23 rounds).
