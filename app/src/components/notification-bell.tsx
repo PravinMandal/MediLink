@@ -37,7 +37,9 @@ export function NotificationBell({
   const openPanel = () => {
     const next = !open;
     setOpen(next);
-    if (next) startTransition(() => router.refresh());
+    if (next) {
+      startTransition(() => router.refresh());
+    }
   };
 
   const markAll = () => {
@@ -98,6 +100,9 @@ export function NotificationBell({
           <div
             role="dialog"
             aria-label="Notifications"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+            }}
             className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-lg border border-line bg-paper-raised shadow-lg"
           >
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
