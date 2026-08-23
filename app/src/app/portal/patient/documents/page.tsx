@@ -11,6 +11,18 @@ import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Documents", description: "Source documents on file, with content hashes for integrity." };
 
+// Module-scope for render purity: a "processing" extraction older than
+// 10 minutes is dead (after() caps at maxDuration=60).
+const EXTRACTION_STALE_MS = 10 * 60 * 1000;
+function effectiveStatus(d: { extractionStatus: string; createdAt: Date }): string {
+  if (
+    d.extractionStatus === "processing" &&
+    Date.now() - d.createdAt.getTime() > EXTRACTION_STALE_MS
+  )
+    return "failed";
+  return d.extractionStatus;
+}
+
 export default async function PatientDocuments() {
   const user = await requireUser();
   const patient = await patientService.forUser(user.id);
@@ -33,13 +45,7 @@ export default async function PatientDocuments() {
         <Card>
           <ul className="divide-y divide-line">
             {docs.map((d) => {
-              // Same staleness rule as the doctor/org views: a "processing"
-              // doc older than 10 minutes is dead.
-              const status =
-                d.extractionStatus === "processing" &&
-                Date.now() - d.createdAt.getTime() > 10 * 60 * 1000
-                  ? "failed"
-                  : d.extractionStatus;
+              const status = effectiveStatus(d);
               return (
                 <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
                 <div className="min-w-0 flex-1">

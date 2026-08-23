@@ -217,7 +217,7 @@ function ConsentGate({ progress }: { progress: React.RefObject<number> }) {
         ctx.font = "600 32px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("CONSENT · CARDIOLOGY · EXPIRES 23 AUG", 320, 48);
+        ctx.fillText("CONSENT · CARDIOLOGY · EXPIRES 30 DAYS FROM GRANT", 320, 48);
       });
       return {
         pillarGeo: new THREE.BoxGeometry(0.26, 3.2, 0.26),

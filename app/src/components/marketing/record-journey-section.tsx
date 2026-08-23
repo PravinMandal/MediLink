@@ -25,7 +25,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     "It is sealed",
-    "The file is hashed with sha-256. Any future edit — one byte — breaks the seal. The original is preserved forever.",
+    "The file is hashed with sha-256. Any future edit — one byte — breaks the seal. The original stays unchanged.",
   ],
   [
     "It passes the gate",
@@ -55,17 +55,33 @@ export function RecordJourneySection() {
   const [caps, setCaps] = useState<{ reduced: boolean; lowDetail: boolean } | null>(
     null,
   );
+  // Active journey step (0-3) — syncs the DOM rail with canvas progress so
+  // the text carries the sequence, not just the visual.
+  const [activeStep, setActiveStep] = useState(-1);
 
   // Mount gate + capability probes, deferred a frame to satisfy the
   // set-state-in-effect rule (pure client reads, no cascading render cost).
   useEffect(() => {
+    const probe = () => window.innerWidth < 640 || window.devicePixelRatio > 2;
     const raf = requestAnimationFrame(() =>
       setCaps({
         reduced: prefersReducedMotion(),
-        lowDetail: window.innerWidth < 640 || window.devicePixelRatio > 2,
+        lowDetail: probe(),
       }),
     );
-    return () => cancelAnimationFrame(raf);
+    // Re-evaluate the detail tier on resize/rotate so tablets aren't
+    // stranded on the wrong tier after rotating.
+    const onResize = () => {
+      const next = probe();
+      setCaps((prev) =>
+        prev && prev.lowDetail === next ? prev : { reduced: prev?.reduced ?? prefersReducedMotion(), lowDetail: next },
+      );
+    };
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
   }, []);
 
   // Visibility gates for the canvas.
@@ -114,6 +130,9 @@ export function RecordJourneySection() {
       const total = rect.height - vh;
       const p = total > 0 ? -rect.top / total : rect.top < vh / 2 ? 1 : 0;
       progressRef.current = Math.min(1, Math.max(0, p));
+      // Beat index for the rail highlight (only setState on change).
+      const beat = Math.min(3, Math.floor(progressRef.current / 0.25));
+      setActiveStep((prev) => (prev === beat ? prev : beat));
     };
     const onScroll = () => {
       if (!tickingRef.current) {
@@ -172,19 +191,32 @@ export function RecordJourneySection() {
           {/* Step copy rail — real content, legible without the canvas */}
           <div className="relative mx-auto w-full max-w-6xl px-5 pb-6 sm:px-8">
             <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-              {STEPS.map(([title, body], i) => (
-                <li key={title} className="min-w-0">
-                  <span className="num text-[12px] font-semibold text-pine">
+              {STEPS.map(([title, body], i) => {
+                const active = i === activeStep;
+                return (
+                <li key={title} className="min-w-0 transition-opacity duration-300" aria-current={active ? "step" : undefined}>
+                  <span
+                    className={
+                      "num text-[12px] font-semibold transition-colors " +
+                      (active ? "text-pine" : "text-ink-faint")
+                    }
+                  >
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <h3 className="mt-1 font-display text-[15.5px] font-semibold leading-snug text-ink sm:text-[17px]">
+                  <h3
+                    className={
+                      "mt-1 font-display text-[15.5px] font-semibold leading-snug transition-colors sm:text-[17px] " +
+                      (active ? "text-ink" : "text-ink-soft")
+                    }
+                  >
                     {title}
                   </h3>
                   <p className="mt-1 hidden max-w-xs text-[12.5px] leading-relaxed text-ink-soft sm:block">
                     {body}
                   </p>
                 </li>
-              ))}
+                );
+              })}
             </ol>
           </div>
         </div>

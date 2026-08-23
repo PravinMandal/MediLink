@@ -226,7 +226,7 @@ export default function MarketingHome() {
                   ["Verification", "✓ Verified facility · MMC-registered pathologist", "text-pine"],
                   ["Source", "Renal Function Panel — Jun 2026.pdf", "text-ink-soft"],
                   ["Integrity", "sha-256 9f86…08f4 · original preserved", "num text-ink-soft"],
-                  ["Access", "Consented: cardiology team · expires 23 Aug", "text-ink-soft"],
+                  ["Access", "Consented: cardiology team · expires with grant", "text-ink-soft"],
                   ["Audit", "Viewed 14 Jul, 21:04 · hash-chained log", "num text-ink-soft"],
                 ].map(([k, v, cls]) => (
                   <div

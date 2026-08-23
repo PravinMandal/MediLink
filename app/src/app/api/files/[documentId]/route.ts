@@ -5,7 +5,7 @@ import { documents } from "@/server/db/schema";
 import { getSessionUser } from "@/server/session";
 import { access } from "@/server/modules/access/guard";
 import { audit } from "@/server/modules/audit/service";
-import { readDocumentBytes } from "@/server/modules/documents/pipeline";
+import { readDocumentBytes, documentSignedUrl } from "@/server/modules/documents/pipeline";
 
 /**
  * Authenticated document streaming. Access check happens on EVERY read:
@@ -45,7 +45,6 @@ export async function GET(
   // doctors); everything else downloads as an attachment.
   const inlineOk = doc.mimeType === "application/pdf" || doc.mimeType.startsWith("image/");
 
-  const bytes = await readDocumentBytes(doc.storageKey);
   await audit.record({
     actorId: user.id,
     actorRole: user.role,
@@ -55,6 +54,18 @@ export async function GET(
     resourceId: doc.id,
     metadata: { via: decision.via },
   });
+
+  // Prefer a short-lived signed redirect when the storage adapter supports it
+  // (Supabase in production) — bytes bypass the function entirely. Local
+  // storage falls through to streaming.
+  const signed = await documentSignedUrl(doc.storageKey).catch(() => null);
+  if (signed) {
+    const res = NextResponse.redirect(signed, 302);
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
+  }
+
+  const bytes = await readDocumentBytes(doc.storageKey);
 
   return new NextResponse(Buffer.from(bytes), {
     headers: {

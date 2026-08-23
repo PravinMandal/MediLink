@@ -15,6 +15,8 @@ export interface StorageAdapter {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Uint8Array>;
   delete(key: string): Promise<void>;
+  /** Short-lived signed read URL; null when unsupported (local disk). */
+  signedUrl?(key: string, expiresInSeconds?: number): Promise<string | null>;
 }
 
 /**
@@ -104,6 +106,22 @@ class SupabaseStorage implements StorageAdapter {
       `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
       { method: "DELETE", headers: this.headers() },
     );
+  }
+
+  /** Signed URL via the Storage Auth API (valid 5 minutes by default). */
+  async signedUrl(key: string, expiresInSeconds = 300): Promise<string | null> {
+    const res = await fetch(
+      `${this.url}/storage/v1/object/sign/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
+      {
+        method: "POST",
+        headers: this.headers(true),
+        body: JSON.stringify({ expiresIn: expiresInSeconds }),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { signedURL?: string; signedUrl?: string };
+    const signed = data.signedURL ?? data.signedUrl;
+    return signed ? `${this.url}/storage/v1${signed}` : null;
   }
 }
 

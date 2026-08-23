@@ -186,3 +186,11 @@ export async function reindexDocument(documentId: string) {
 export async function readDocumentBytes(storageKey: string): Promise<Uint8Array> {
   return getStorage().get(storageKey);
 }
+
+/** Short-lived signed URL when the storage adapter supports it (Supabase). */
+export async function documentSignedUrl(
+  storageKey: string,
+  expiresInSeconds?: number,
+): Promise<string | null> {
+  return (await getStorage().signedUrl?.(storageKey, expiresInSeconds)) ?? null;
+}

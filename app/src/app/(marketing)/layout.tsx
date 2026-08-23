@@ -81,8 +81,10 @@ export default function MarketingLayout({
           <div className="text-[12.5px] leading-relaxed text-ink-soft">
             <p className="eyebrow mb-2">Direction</p>
             <p>
-              Built for compatibility with ABDM (ABHA, HPR, HFR) and designed against
-              the consent, notice and security obligations of the DPDP Act, 2023.
+              ABDM-aligned architecture — ABHA numbers are supported on patient
+              records today; HPR/HFR registry integration is planned. Designed
+              against the consent, notice and security obligations of the DPDP
+              Act, 2023.
             </p>
           </div>
           <div className="text-[12.5px] leading-relaxed text-ink-soft">
