@@ -102,3 +102,6 @@ Also verified behaviorally on production: prefers-reduced-motion → no canvas m
 
 ## Round 25 — 2026-08-23 10:33 (Explorer-4 deep marketing)
 Shipped: journey DOM rail now syncs with scroll progress (active step highlighted, aria-current="step"); honesty fixes — stale "EXPIRES 23 AUG" magic dates replaced with relative phrasing, "preserved forever" → "stays unchanged", footer ABDM claim qualified (ABHA supported today, HPR/HFR planned); lowDetail tier re-evaluates on resize (tablet rotation); file route prefers a 5-min signed Supabase redirect post-access-check (bytes bypass the function; local storage still streams). Deployed; production 26/26.
+
+## Round 26 — 2026-08-23 10:43
+Found via org-upload E2E: SUPABASE_SERVICE_ROLE_KEY in .env is INVALID (storage writes 403 "Invalid Compact JWS") — all document uploads fail on the current deployment. Cannot fix credentials autonomously; shipped honest error surfacing ("Document storage is not configured correctly…") + stakeholder Q8 documenting the exact fix. Org uploads list raised to 20 (new uploads were invisible past the seeded 10). Deployed; production 26/26.
