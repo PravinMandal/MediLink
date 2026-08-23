@@ -75,3 +75,11 @@ Fixes shipped: hero H1 spacing ({"\n"} for screen readers/copy-paste), filter-aw
 
 ## Round 18 — 2026-08-23 09:36
 Shipped: patient dashboard "Your SBAR summary" card — the patient finally sees their own cited summary (self-access ungated), seeded summary renders full SBAR content. Deployed; production 26/26.
+
+## Round 19 — 2026-08-23 09:44 (Explorer-3 final sweep)
+Explorer-3 audited the unexamined surfaces (portal dispatcher, sign-up flow, 3D scene, AI modules, boundaries, README, stakeholder questions). Shipped:
+- Contradiction engine fixes (correctness): upsert dedupes on the content key (distinct analytes coexist instead of overwriting); resolve() merges the note into details instead of destroying conflict evidence.
+- Branded root not-found.tsx + global-error.tsx (inline-styled, no CSS dependency).
+- Sign-up dead ends closed: post-signup sign-in failure → /sign-in?registered=1 with a status message; weak-password errors surfaced; doctors land on /portal/doctor/verification after signup.
+- Portal dispatcher redirects unauthenticated visitors straight to /sign-in; ageFrom guards future DOBs; README refreshed (live URL, feature list, env-file note).
+Deployed; production 26/26.

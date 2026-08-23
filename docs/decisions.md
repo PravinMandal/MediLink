@@ -1,5 +1,9 @@
 # Decision Log — MediLink Overhaul
 
+## D25 — Explorer-3 correctness + polish batch (2026-08-23)
+**Decision:** Contradiction engine: conflicts dedupe on a content hash key (`_key` in details) so distinct conflicting analytes/allergies coexist; `resolve()` merges the resolution note into existing details (never wipes evidence). Root `not-found.tsx` (on-brand 404) and `global-error.tsx` (inline styles, digest-only logging in prod). Sign-up: post-signup sign-in failure redirects to `/sign-in?registered=1` with an explicit status message; weak-password errors surfaced as field feedback; doctors land on `/portal/doctor/verification` after signup. Portal dispatcher sends unauthenticated visitors directly to /sign-in. `ageFrom` returns null for future DOBs.
+**Rationale:** Explorer-3 found the contradiction engine silently collapsing same-kind conflicts and resolve() destroying evidence — the only genuine correctness bugs of the round; the rest are the last unpolished surfaces (default-styled 404/layout crashes) and dead ends.
+
 ## D24 — ABHA number field (2026-08-23)
 **Decision:** New optional `patients.abhaNumber` column (migration 0004) for India's national health ID. Patient profile gains an ABHA input (normalized to digits on save); doctor record header shows "· ABHA xxxx" when present. Full ABDM sandbox linking stays a future adapter (no credentials).
 **Rationale:** Explorer-2 #2: ABHA linkage is the biggest credibility gap for an India-focused product; the data model + display now exist so the adapter can land later. Note: db:migrate/db:seed npm scripts now load `.env` (`tsx --env-file=.env`) — previously they silently targeted local PGlite even when DATABASE_URL was configured; caught when the dev server (Supabase-backed) errored on the missing column.
