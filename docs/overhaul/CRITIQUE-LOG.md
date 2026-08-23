@@ -114,3 +114,6 @@ Break-glass flow E2E-verified (collapsed form → reason → emergency banner + 
 
 ## Round 29 — 2026-08-23 11:10 (Juror-5 confirmation)
 Juror round 5 on production: **overall 9.2/10** (from 9.1) — all round-25/27 fixes verified live (hero spacing, rail highlight aria-current advancing with scroll, ABDM qualification, checklist trim). Verdict: "SOTD-caliber holds; every claimed fix landed, no regressions found."
+
+## Round 30 — 2026-08-23 11:18
+Contradiction re-detection regression test added (32 tests); bell panel Escape-to-close. Deployed; production 26/26.
