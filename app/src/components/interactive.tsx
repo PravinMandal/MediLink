@@ -85,6 +85,17 @@ export function CitationChips({
   onOpen: (n: number) => void;
 }) {
   if (!sources.length) return null;
+  // Trust-ranked chip variants: the chip itself encodes the evidence level —
+  // filled = verified, solid outline = extracted, dashed = self-reported.
+  const chipClass = (trust: string) => {
+    const base =
+      "num inline-flex h-4 min-h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] px-1.5 text-[10px] font-semibold leading-none transition-colors";
+    if (trust === "verified")
+      return `${base} border border-pine/40 bg-pine-tint text-pine-ink hover:border-pine hover:bg-pine hover:text-white`;
+    if (trust === "self_reported")
+      return `${base} border border-dashed border-ink-faint/60 bg-transparent text-ink-faint hover:border-ink-faint hover:text-ink`;
+    return `${base} border border-ink-faint/50 bg-paper-raised text-ink-soft hover:border-ink-faint hover:text-ink`;
+  };
   return (
     <span className="ml-1.5 inline-flex gap-1 align-baseline">
       {sources.slice(0, 4).map((s, i) => (
@@ -95,8 +106,9 @@ export function CitationChips({
             e.stopPropagation();
             onOpen(i);
           }}
-          title={`Source ${i + 1}: ${s.label}`}
-          className="num inline-flex h-4 min-h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border border-pine/40 bg-pine-tint px-1.5 text-[10px] font-semibold leading-none text-pine-ink transition-colors hover:border-pine hover:bg-pine hover:text-white"
+          title={`Source ${i + 1}: ${s.label} · ${TRUST_LABEL[s.trust] ?? s.trust}`}
+          aria-label={`Source ${i + 1}: ${s.label}, ${TRUST_LABEL[s.trust] ?? s.trust}`}
+          className={chipClass(s.trust)}
         >
           {i + 1}
         </button>

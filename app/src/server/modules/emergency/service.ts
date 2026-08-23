@@ -10,10 +10,12 @@ import { db } from "@/server/db";
 import {
   emergencyAccessEvents,
   patients,
+  user as userTable,
 } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
 import { access, EMERGENCY_SCOPES } from "@/server/modules/access/guard";
 import { notify } from "@/server/modules/notifications/service";
+import { outOfBand } from "@/server/modules/notifications/email";
 import { records } from "@/server/modules/records/service";
 
 const BREAK_GLASS_WINDOW_MINUTES = 60;
@@ -90,7 +92,7 @@ export const emergency = {
       console.error("[audit] write failed (emergency.break_glass)", err);
     }
 
-    // Notify the patient (in-app; email/SMS adapters can subscribe later).
+    // Notify the patient (in-app always; email out-of-band when configured).
     if (patient.userId) {
       await notify.push({
         userId: patient.userId,
@@ -99,6 +101,20 @@ export const emergency = {
         body: `A verified doctor accessed your emergency profile. Reason: ${input.reason.trim()}`,
         link: "/portal/patient/access-history",
       });
+      if (outOfBand.enabled()) {
+        const [acct] = await db
+          .select({ email: userTable.email })
+          .from(userTable)
+          .where(eq(userTable.id, patient.userId));
+        if (acct?.email) {
+          void outOfBand.send({
+            to: acct.email,
+            subject: "Emergency access was used on your MediLink record",
+            text: `A verified doctor accessed your emergency profile.\n\nReason: ${input.reason.trim()}\n\nThe access is time-boxed to ${BREAK_GLASS_WINDOW_MINUTES} minutes, fully audited, and queued for administrator review.`,
+            ctaUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/portal/patient/access-history`,
+          });
+        }
+      }
       await db
         .update(emergencyAccessEvents)
         .set({ patientNotifiedAt: new Date() })

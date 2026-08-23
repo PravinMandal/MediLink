@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { PageHeader, Card, CardHeader, Badge, Alert, EmptyState } from "@/components/ui";
 import { db } from "@/server/db";
 import { emergencyAccessEvents, patients, practitioners, user as userTable } from "@/server/db/schema";
@@ -18,7 +18,7 @@ import {
   ReviewPractitionerButtons,
   VerifyAuditChainButton,
 } from "@/components/admin-forms";
-import { formatTime } from "@/lib/utils";
+import { formatTime, formatAuditAction } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Review queue", description: "Verify practitioner registrations and organizations." };
 
@@ -36,13 +36,41 @@ export default async function AdminPage() {
         event: emergencyAccessEvents,
         practitionerName: practitioners.fullName,
         patientName: patients.fullName,
+        patientUserId: patients.userId,
       })
       .from(emergencyAccessEvents)
       .leftJoin(practitioners, eq(practitioners.id, emergencyAccessEvents.practitionerId))
       .leftJoin(patients, eq(patients.id, emergencyAccessEvents.patientId))
       .orderBy(desc(emergencyAccessEvents.accessedAt))
       .limit(10),
-    audit.recent(30),
+    (async () => {
+      // Audit stream with actor + patient context: the tamper-evidence story
+      // must be readable, not just hashes.
+      const events = await audit.recent(30);
+      const userIds = [...new Set(events.map((e) => e.actorId).filter((x): x is string => !!x))];
+      const patientIds = [...new Set(events.map((e) => e.patientId).filter((x): x is string => !!x))];
+      const [users, patientRows] = await Promise.all([
+        userIds.length
+          ? db
+              .select({ id: userTable.id, name: userTable.name, role: userTable.role })
+              .from(userTable)
+              .where(inArray(userTable.id, userIds))
+          : Promise.resolve([]),
+        patientIds.length
+          ? db
+              .select({ id: patients.id, fullName: patients.fullName })
+              .from(patients)
+              .where(inArray(patients.id, patientIds))
+          : Promise.resolve([]),
+      ]);
+      const userById = new Map(users.map((u) => [u.id, u]));
+      const patientById = new Map(patientRows.map((p) => [p.id, p]));
+      return events.map((e) => ({
+        ...e,
+        actor: e.actorId ? userById.get(e.actorId) : undefined,
+        patient: e.patientId ? patientById.get(e.patientId) : undefined,
+      }));
+    })(),
   ]);
 
   const practitionerUserNames = pendingPractitioners.length
@@ -131,7 +159,7 @@ export default async function AdminPage() {
           />
           {emergencyEvents.length ? (
             <ul className="divide-y divide-line">
-              {emergencyEvents.map(({ event, practitionerName, patientName }) => (
+              {emergencyEvents.map(({ event, practitionerName, patientName, patientUserId }) => (
                 <li key={event.id} className="px-4 py-3 sm:px-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-medium text-ink">
@@ -143,8 +171,12 @@ export default async function AdminPage() {
                   </div>
                   <p className="mt-1 text-xs text-ink-soft">“{event.reason}”</p>
                   <p className="mt-0.5 text-[11px] text-ink-faint">
-                    {formatTime(event.accessedAt)} · notified{" "}
-                    {event.patientNotifiedAt ? "✓" : "—"}
+                    {formatTime(event.accessedAt)} ·{" "}
+                    {event.patientNotifiedAt
+                      ? `notified ${formatTime(event.patientNotifiedAt)}`
+                      : patientUserId
+                        ? "notification pending"
+                        : "no patient account — contact on file"}
                   </p>
                   {event.reviewStatus === "pending" ? (
                     <div className="mt-2">
@@ -176,10 +208,22 @@ export default async function AdminPage() {
             {recentAudit.map((e) => (
               <li key={e.seq} className="flex items-center justify-between gap-2 px-4 py-2 sm:px-5">
                 <div className="min-w-0">
-                  <p className="num truncate text-[12px] text-ink">{e.action}</p>
+                  <p className="truncate text-[12px] text-ink">
+                    <span className="font-medium">{formatAuditAction(e.action)}</span>
+                    {e.actor ? (
+                      <span className="text-ink-soft">
+                        {" "}
+                        · {e.actor.name}
+                        <span className="text-ink-faint"> ({e.actor.role.replace(/_/g, " ")})</span>
+                      </span>
+                    ) : null}
+                    {e.patient ? <span className="text-ink-soft"> · {e.patient.fullName}</span> : null}
+                  </p>
                   <p className="text-[10px] text-ink-faint">{formatTime(e.createdAt)}</p>
                 </div>
-                <span className="num text-[10px] text-ink-faint">{e.hash.slice(0, 8)}…</span>
+                <span className="num text-[10px] text-ink-faint" title="Hash chain">
+                  #{e.seq} · {e.hash.slice(0, 8)}…
+                </span>
               </li>
             ))}
           </ul>

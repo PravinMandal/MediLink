@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { EvidenceCard } from "@/components/marketing/evidence-card";
 import { RecordJourneySection } from "@/components/marketing/record-journey-section";
+import { RecordPreviewSection } from "@/components/marketing/record-preview";
+import { SealLine } from "@/components/marketing/seal-line";
 import { Reveal } from "@/components/marketing/reveal";
 
 /**
@@ -42,7 +44,7 @@ export default function MarketingHome() {
         <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-16 pt-14 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:gap-16 lg:pb-24 lg:pt-20">
           <div data-hero style={heroStagger(0)}>
             <p className="eyebrow">Provenance-aware health records · India</p>
-            <h1 className="mt-4 font-display text-[clamp(2.4rem,6vw,4.2rem)] font-semibold leading-[1.04] tracking-[-0.015em] text-ink">
+            <h1 className="mt-4 font-display text-[clamp(2.15rem,7.5vw,4.2rem)] font-semibold leading-[1.08] tracking-[-0.01em] text-ink sm:leading-[1.04] sm:tracking-[-0.015em]">
               A patient&apos;s history,
               <br />
               <span className="text-pine">with receipts.</span>
@@ -60,17 +62,17 @@ export default function MarketingHome() {
             <div
               data-hero
               style={heroStagger(2)}
-              className="mt-8 flex flex-wrap items-center gap-3"
+              className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
             >
               <Link
                 href="/sign-in"
-                className="inline-flex h-11 items-center justify-center rounded-md border border-pine bg-pine px-5 text-[14.5px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep"
+                className="inline-flex h-11 w-full items-center justify-center rounded-md border border-pine bg-pine px-5 text-[14.5px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep sm:w-auto"
               >
                 Open the live demo
               </Link>
               <Link
                 href="#how"
-                className="inline-flex h-11 items-center justify-center rounded-md border border-line-strong bg-paper-raised px-5 text-[14.5px] font-medium text-ink transition-colors hover:border-ink-faint"
+                className="inline-flex h-11 w-full items-center justify-center rounded-md border border-line-strong bg-paper-raised px-5 text-[14.5px] font-medium text-ink transition-colors hover:border-ink-faint sm:w-auto"
               >
                 How it works
               </Link>
@@ -82,6 +84,11 @@ export default function MarketingHome() {
             >
               Demo accounts on the sign-in page — doctor, patient, lab, admin.
             </p>
+            {/* Signature motion motif: the hash seal. Content-free (aria-hidden)
+                because it is decorative; the thesis is stated in text above. */}
+            <div data-hero style={heroStagger(4)}>
+              <SealLine />
+            </div>
           </div>
           <div data-hero style={heroStagger(2)} className="flex justify-center lg:justify-end">
             <EvidenceCard />
@@ -279,6 +286,28 @@ export default function MarketingHome() {
               </Reveal>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---------------- See the record (static proof) ---------------- */}
+      <RecordPreviewSection />
+
+      {/* ---------------- Quantified proof band ---------------- */}
+      <section aria-label="By the numbers" className="border-b border-line">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px overflow-hidden bg-line sm:grid-cols-4">
+          {[
+            ["sha-256", "Every record sealed with a content hash"],
+            ["100%", "Clinical writes from identity-verified practitioners"],
+            ["60 min", "Maximum emergency access window, always audited"],
+            ["0", "Records readable without consent or break-glass"],
+          ].map(([num, label]) => (
+            <div key={label} className="bg-paper px-5 py-8 text-center sm:py-10">
+              <p className="num font-display text-[26px] font-semibold tracking-tight text-pine sm:text-3xl">
+                {num}
+              </p>
+              <p className="mx-auto mt-1.5 max-w-40 text-[12px] leading-snug text-ink-soft">{label}</p>
+            </div>
+          ))}
         </div>
       </section>
 

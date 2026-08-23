@@ -26,28 +26,30 @@ export default function MarketingLayout({
               MediLink
             </span>
           </Link>
-          <nav aria-label="Site" className="flex items-center gap-1 sm:gap-2">
+          <nav aria-label="Site" className="flex items-center gap-0.5 sm:gap-2">
+            {/* In-page sections are hidden on desktop behind the story flow;
+                on mobile there is no other navigation, so they stay visible. */}
             <Link
               href="/#how"
-              className="hidden rounded-md px-3 py-2 text-[13.5px] font-medium text-ink-soft transition-colors hover:text-ink sm:block"
+              className="rounded-md px-2 py-2 text-[12.5px] font-medium text-ink-soft transition-colors hover:text-ink sm:hidden"
             >
-              How it works
+              How
             </Link>
             <Link
               href="/#trust"
-              className="hidden rounded-md px-3 py-2 text-[13.5px] font-medium text-ink-soft transition-colors hover:text-ink sm:block"
+              className="rounded-md px-2 py-2 text-[12.5px] font-medium text-ink-soft transition-colors hover:text-ink sm:hidden"
             >
               Trust
             </Link>
             <Link
               href="/sign-in"
-              className="rounded-md px-3 py-2 text-[13.5px] font-medium text-ink-soft transition-colors hover:text-ink"
+              className="rounded-md px-2.5 py-2 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink sm:px-3 sm:text-[13.5px]"
             >
               Sign in
             </Link>
             <Link
               href="/sign-up"
-              className="rounded-md border border-pine bg-pine px-3.5 py-2 text-[13.5px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep"
+              className="rounded-md border border-pine bg-pine px-2.5 py-2 text-[13px] font-medium text-white transition-colors hover:border-pine-deep hover:bg-pine-deep sm:px-3.5 sm:text-[13.5px]"
             >
               Create account
             </Link>

@@ -6,28 +6,11 @@ import { PageHeader, Card, EmptyState, Badge } from "@/components/ui";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { audit } from "@/server/modules/audit/service";
-import { formatTime } from "@/lib/utils";
+import { formatTime, formatAuditAction } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Access history", description: "Every read of your record, including emergency access events." };
 
 const PAGE_SIZE = 25;
-
-const ACTION_LABEL: Record<string, string> = {
-  "document.viewed": "Viewed a source document",
-  "document.uploaded": "Uploaded a document",
-  "ai.summary.generated": "Generated an AI summary",
-  "consent.granted": "You granted access",
-  "consent.revoked": "You revoked access",
-  "consent.requested": "Requested access to your records",
-  "emergency.break_glass": "EMERGENCY ACCESS USED",
-  "record.condition.created": "Added a condition",
-  "record.allergy.created": "Added an allergy",
-  "record.medication.created": "Added a medication",
-  "record.procedure.created": "Added a procedure",
-  "record.encounter.created": "Recorded an encounter",
-  "patient.created": "Record created",
-  "patient.profile.updated": "You updated your profile",
-};
 
 export default async function AccessHistory({
   searchParams,
@@ -69,7 +52,7 @@ export default async function AccessHistory({
                 >
                   <div className="min-w-0">
                     <p className={"text-sm font-medium " + (isEmergency ? "text-alert" : "text-ink")}>
-                      {ACTION_LABEL[e.action] ?? e.action}
+                      {formatAuditAction(e.action)}
                     </p>
                     <p className="mt-0.5 text-xs text-ink-soft">
                       {formatTime(e.createdAt)}

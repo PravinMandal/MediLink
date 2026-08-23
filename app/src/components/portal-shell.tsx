@@ -38,11 +38,13 @@ export function PortalShell({
   role,
   name,
   verificationStatus,
+  notificationBell,
   children,
 }: {
   role: string;
   name: string;
   verificationStatus?: string;
+  notificationBell?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -76,6 +78,7 @@ export function PortalShell({
             </span>
           </Link>
           <div className="flex items-center gap-3">
+            {notificationBell}
             <span className="hidden items-center gap-2 text-xs text-ink-soft sm:flex">
               <span
                 aria-hidden

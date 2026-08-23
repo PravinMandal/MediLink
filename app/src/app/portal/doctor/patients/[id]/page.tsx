@@ -23,15 +23,18 @@ import {
   RequestAccessForm,
   BreakGlassForm,
 } from "@/components/doctor-forms";
+import { RecordSearchForm } from "@/components/record-search";
+import { RetryExtractionButton } from "@/components/retry-extraction";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
-import { access, EMERGENCY_SCOPES } from "@/server/modules/access/guard";
+import { access, EMERGENCY_SCOPES, scopeForResource } from "@/server/modules/access/guard";
 import { records } from "@/server/modules/records/service";
+import { search } from "@/server/modules/search/service";
 import { summarizer } from "@/server/modules/ai/summarize";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
-import { formatDate, cn, ageFrom } from "@/lib/utils";
+import { formatDate, cn, ageFrom, TRUST_LABEL } from "@/lib/utils";
 import type { ConsentScope } from "@/server/modules/consent/service";
 
 export const metadata: Metadata = {
@@ -124,10 +127,10 @@ export default async function DoctorPatientPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string }>;
 }) {
   const { id } = await params;
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, q: rawQ } = await searchParams;
   const user = await requireUser();
 
   const patient = await patientService.byId(id);
@@ -193,7 +196,7 @@ export default async function DoctorPatientPage({
   const ageDob = age != null ? `${age}y · b. ${formatDate(patient.dob, "short")}` : "";
 
   // Fetch only what the consent allows — never query what the grantee can't see.
-  const [bloodGroup, allergies, meds, conds, summary, conflicts] = await Promise.all([
+  const [bloodGroup, allergies, meds, conds, summary, conflicts, span] = await Promise.all([
     can("demographics") ? records.bloodGroup(patient.id, patient.bloodGroupSelfReported) : null,
     can("allergies") ? records.currentAllergies(patient.id) : [],
     can("medications") ? records.currentMedications(patient.id) : [],
@@ -202,7 +205,13 @@ export default async function DoctorPatientPage({
     // to a grantee with narrower scopes (decision D12).
     summarizer.latestFor(patient.id, decision.scopes),
     contradictionEngine.openFor(patient.id),
+    can("conditions") ? records.encounterSpan(patient.id) : null,
   ]);
+
+  const activeConds = conds.filter((c) => c.status !== "resolved");
+  const criticalAllergies = allergies.filter(
+    (a) => a.criticality?.toLowerCase().includes("high") || a.criticality?.toLowerCase() === "critical",
+  );
 
   return (
     <>
@@ -218,59 +227,82 @@ export default async function DoctorPatientPage({
       <PageHeader
         eyebrow={viaEmergency ? "Emergency view" : "Doctor portal"}
         title={patient.fullName}
-        description={`${patient.sex ?? ""} ${ageDob ? `· ${ageDob}` : ""} · access via ${decision.via}`}
-        action={
-          can("demographics") ? (
-            <div className="text-right">
-              <p className="eyebrow">Blood group</p>
-              <p className="num mt-0.5 flex items-center gap-2 text-lg font-semibold text-ink">
-                {bloodGroup?.verified?.value ?? bloodGroup?.selfReported ?? "—"}
-                {bloodGroup?.verified ? <span className="seal">✓ lab</span> : null}
-              </p>
-              {bloodGroup?.conflict ? (
-                <p className="text-[11px] text-alert">⚠ conflicts with self-report</p>
-              ) : null}
-            </div>
-          ) : null
-        }
+        description={`${patient.sex ?? ""} ${ageDob ? `· ${ageDob}` : ""} · access via ${decision.via}${patient.abhaNumber ? ` · ABHA ${patient.abhaNumber}` : ""}`}
+        action={undefined}
       />
 
-      {/* At a glance */}
-      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="p-4">
-          <p className="eyebrow mb-2">Allergies</p>
-          {allergies?.length ? (
-            <ul className="space-y-1.5">
-              {allergies.map((a) => (
-                <li key={a.id} className="text-sm font-medium text-alert">
-                  {a.substance}
-                  <span className="font-normal text-ink-soft">
-                    {" "}
-                    {[a.criticality, a.reaction].filter(Boolean).join(" · ")}
-                  </span>
-                </li>
-              ))}
-            </ul>
+      {/* At a glance — the "10-second" band: blood group anchor, red-line
+          allergies, active problems, last encounter, in one viewport. */}
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        {/* Blood group anchor — the single most emergency-critical datum */}
+        {can("demographics") ? (
+          <Card className="relative flex flex-col justify-between overflow-hidden bg-pine p-4 text-white">
+            <p className="eyebrow text-white/70">Blood group</p>
+            <p className="num font-display text-4xl font-bold leading-none tracking-tight">
+              {bloodGroup?.verified?.value ?? bloodGroup?.selfReported ?? "—"}
+            </p>
+            <p className="mt-1 text-[11px] leading-tight text-white/80">
+              {bloodGroup?.verified
+                ? "lab-verified"
+                : bloodGroup?.selfReported
+                  ? "self-reported"
+                  : "unknown"}
+              {bloodGroup?.conflict ? " · ⚠ conflicts with self-report" : ""}
+            </p>
+          </Card>
+        ) : null}
+        <Card className="border-l-2 border-l-alert p-4">
+          <p className="eyebrow mb-2 text-alert">Red-line allergies</p>
+          {can("allergies") ? (
+            criticalAllergies.length ? (
+              <ul className="space-y-1.5">
+                {criticalAllergies.slice(0, 3).map((a) => (
+                  <li key={a.id} className="text-sm font-semibold text-alert">
+                    {a.substance}
+                    <span className="font-normal text-ink-soft">
+                      {" "}
+                      {[a.criticality, a.reaction].filter(Boolean).join(" · ")}
+                    </span>
+                  </li>
+                ))}
+                {allergies.length > criticalAllergies.length ? (
+                  <li className="text-[11px] text-ink-faint">
+                    +{allergies.length - criticalAllergies.length} lower-severity
+                  </li>
+                ) : null}
+              </ul>
+            ) : allergies.length ? (
+              <p className="text-sm text-ink-faint">
+                {allergies.length} documented, none high-severity
+              </p>
+            ) : (
+              <p className="text-sm text-ink-faint">None documented</p>
+            )
           ) : (
-            <p className="text-sm text-ink-faint">{can("allergies") ? "None documented" : "Not in consent scope"}</p>
+            <p className="text-sm text-ink-faint">Not in consent scope</p>
           )}
+          <ProvenanceLine
+            date={allergies[0]?.recordedAt ?? allergies[0]?.createdAt}
+            trust={allergies[0]?.trust}
+          />
         </Card>
         <Card className="p-4">
-          <p className="eyebrow mb-2">Active conditions</p>
+          <p className="eyebrow mb-2">Active problems</p>
           {can("conditions") ? (
-            conds.filter((c) => c.status !== "resolved").length ? (
+            activeConds.length ? (
               <ul className="space-y-1">
-                {conds
-                  .filter((c) => c.status !== "resolved")
-                  .map((c) => (
-                    <li key={c.id} className="text-[13px] text-ink">
-                      {c.name}
-                      <span className="text-ink-faint">
-                        {" "}
-                        {c.onsetDate ? `· ${formatDate(c.onsetDate, "short")}` : ""}
-                      </span>
-                    </li>
-                  ))}
+                {activeConds.slice(0, 3).map((c) => (
+                  <li key={c.id} className="text-[13px] text-ink">
+                    {c.name}
+                    <span className="text-ink-faint">
+                      {" "}
+                      {c.onsetDate ? `· ${formatDate(c.onsetDate, "short")}` : ""}
+                    </span>
+                  </li>
+                ))}
+                {activeConds.length > 3 ? (
+                  <li className="text-[11px] text-ink-faint">+{activeConds.length - 3} more</li>
+                ) : null}
               </ul>
             ) : (
               <p className="text-sm text-ink-faint">None</p>
@@ -278,13 +310,17 @@ export default async function DoctorPatientPage({
           ) : (
             <p className="text-sm text-ink-faint">Not in consent scope</p>
           )}
+          <ProvenanceLine
+            date={activeConds[0]?.recordedAt ?? activeConds[0]?.createdAt}
+            trust={activeConds[0]?.trust}
+          />
         </Card>
         <Card className="p-4">
           <p className="eyebrow mb-2">Active medications</p>
           {can("medications") ? (
             meds.length ? (
               <ul className="space-y-1">
-                {meds.map((m) => (
+                {meds.slice(0, 3).map((m) => (
                   <li key={m.id} className="text-[13px] text-ink">
                     {m.medication}
                     <span className="text-ink-faint">
@@ -293,12 +329,37 @@ export default async function DoctorPatientPage({
                     </span>
                   </li>
                 ))}
+                {meds.length > 3 ? (
+                  <li className="text-[11px] text-ink-faint">+{meds.length - 3} more</li>
+                ) : null}
               </ul>
             ) : (
               <p className="text-sm text-ink-faint">None</p>
             )
           ) : (
             <p className="text-sm text-ink-faint">Not in consent scope</p>
+          )}
+          <ProvenanceLine date={meds[0]?.recordedAt ?? meds[0]?.createdAt} trust={meds[0]?.trust} />
+        </Card>
+        <Card className="p-4">
+          <p className="eyebrow mb-2">Record activity</p>
+          {span ? (
+            <>
+              <p className="text-[13px] text-ink">
+                Last encounter{" "}
+                <span className="num font-medium">{formatDate(span.last, "short")}</span>
+              </p>
+              <p className="mt-1 text-[11.5px] text-ink-faint">
+                {span.count} encounters · history since {formatDate(span.first, "short")}
+              </p>
+              {allergies?.length || meds.length || activeConds.length ? (
+                <p className="num mt-2 text-[11px] text-ink-soft">
+                  {activeConds.length} problems · {meds.length} meds · {allergies?.length ?? 0} allergies
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-ink-faint">No encounters on file</p>
           )}
         </Card>
       </div>
@@ -331,6 +392,11 @@ export default async function DoctorPatientPage({
       {/* ---------------- Summary tab ---------------- */}
       {tab === "summary" ? (
         <div role="tabpanel" aria-label="Summary" className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="eyebrow">Search this record</p>
+            <RecordSearchForm patientId={patient.id} />
+          </div>
+          {rawQ ? <RecordSearchResults patientId={patient.id} q={rawQ} scopes={scopes} /> : null}
           <Card>
             <CardHeader
               eyebrow="AI-generated summary"
@@ -444,6 +510,94 @@ export default async function DoctorPatientPage({
 }
 
 /* ---------------- Sections ---------------- */
+
+/** Extraction staleness: a "processing" doc older than 10 minutes is dead
+ *  (the after() window caps at maxDuration=60) — surface as failed so the
+ *  retry affordance shows. Module-scope helper for render purity. */
+const EXTRACTION_STALE_MS = 10 * 60 * 1000;
+function effectiveExtractionStatus(d: {
+  extractionStatus: string;
+  createdAt: Date;
+}): string {
+  if (
+    d.extractionStatus === "processing" &&
+    Date.now() - d.createdAt.getTime() > EXTRACTION_STALE_MS
+  )
+    return "failed";
+  return d.extractionStatus;
+}
+
+/** Trust-ranked provenance micro-line for glance data: seal when verified,
+ *  plain when not — the "where did this fact come from" answer at a glance. */
+function ProvenanceLine({ date, trust }: { date?: Date | string | null; trust?: string | null }) {
+  if (!date && !trust) return null;
+  return (
+    <p className="mt-2 flex items-center gap-1.5 text-[10.5px] text-ink-faint">
+      {trust === "verified" ? <span className="seal">✓</span> : null}
+      <span>
+        {trust && trust !== "verified" ? `${TRUST_LABEL[trust] ?? trust} · ` : ""}
+        {date ? `recorded ${formatDate(date, "short")}` : ""}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * Consent-scoped full-text search across the patient's record content.
+ * Hits whose governing scope isn't granted are dropped server-side;
+ * unknown resource kinds fail closed (scopeForResource throws → skipped).
+ */
+async function RecordSearchResults({
+  patientId,
+  q,
+  scopes,
+}: {
+  patientId: string;
+  q: string;
+  scopes: string[];
+}) {
+  const hits = (await search.inPatient(patientId, q)).filter((h) => {
+    try {
+      return scopes.includes(scopeForResource(h.recordType));
+    } catch {
+      return false;
+    }
+  });
+
+  if (!hits.length)
+    return (
+      <EmptyState
+        title={`No matches for “${q}”`}
+        body="Search covers record content within the current consent scope — allergies, conditions, medications, labs, procedures, documents."
+      />
+    );
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow="Record search"
+        title={`${hits.length} match${hits.length > 1 ? "es" : ""} for “${q}”`}
+      />
+      <ul className="divide-y divide-line">
+        {hits.map((h) => (
+          <li key={h.chunkId} className="px-4 py-3 sm:px-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <p className="text-[13.5px] font-medium text-ink">{h.label}</p>
+              <div className="flex items-center gap-2">
+                <Badge>{h.recordType.replace(/_/g, " ")}</Badge>
+                {h.trust === "verified" ? <span className="seal">✓</span> : null}
+                {h.date ? (
+                  <span className="num text-[11px] text-ink-faint">{formatDate(h.date, "short")}</span>
+                ) : null}
+              </div>
+            </div>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">{h.snippet}</p>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 async function TimelineSection({
   patientId,
@@ -606,28 +760,46 @@ async function DocumentsSection({
     );
   const docs = await records.documentsFor(patientId);
   if (!docs.length) return <EmptyState title="No documents on file" />;
+  // A "processing" doc older than 10 minutes is dead — see
+  // effectiveExtractionStatus above.
+  const statusOf = (d: (typeof docs)[number]) => effectiveExtractionStatus(d);
   return (
     <Card>
       <CardHeader eyebrow="Evidence" title="Source documents" />
       <ul className="divide-y divide-line">
-        {docs.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-ink">{d.title}</p>
-              <p className="num text-[11px] text-ink-faint">
-                {formatDate(d.recordedDate ?? d.createdAt, "short")} · sha {d.contentHash.slice(0, 10)}…
-              </p>
-            </div>
-            <a
-              href={`/api/files/${d.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-md border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
-            >
-              Open ↗
-            </a>
-          </li>
-        ))}
+        {docs.map((d) => {
+          const status = statusOf(d);
+          return (
+            <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{d.title}</p>
+                <p className="num text-[11px] text-ink-faint">
+                  {formatDate(d.recordedDate ?? d.createdAt, "short")} · sha {d.contentHash.slice(0, 10)}…
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {status === "done" ? (
+                  <Badge tone="pine">extracted</Badge>
+                ) : status === "failed" ? (
+                  <Badge tone="amber">extraction failed</Badge>
+                ) : (
+                  <Badge>extracting…</Badge>
+                )}
+                {status === "failed" ? (
+                  <RetryExtractionButton patientId={patientId} documentId={d.id} />
+                ) : null}
+                <a
+                  href={`/api/files/${d.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
+                >
+                  Open ↗
+                </a>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );

@@ -8,7 +8,7 @@ import { patientService } from "@/server/modules/patients/service";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { consent } from "@/server/modules/consent/service";
 import { PatientSearchForm } from "@/components/patient-search";
-import { formatDate } from "@/lib/utils";
+import { formatDate, initials } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Patients", description: "Search for a patient and open their consent-scoped record." };
 
@@ -81,18 +81,46 @@ export default async function DoctorHome({
         ) : (
           <Card>
             <ul className="divide-y divide-line">
-              {withAccess.map((p) => (
-                <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink">
-                      {p.fullName}
-                      <span className="ml-2 text-xs font-normal text-ink-soft">
-                        {p.sex ?? ""} {p.dob ? `· b. ${formatDate(p.dob, "short")}` : ""}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-ink-soft">
-                      {p.phone ?? "no phone"} {p.addressCity ? `· ${p.addressCity}` : ""}
-                    </p>
+              {withAccess.map((p) => {
+                const expiring = p.access.find((a) => a.expiresAt);
+                const soonest = expiring?.expiresAt;
+                return (
+                <li key={p.id} className="relative flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+                  {/* Chain motif: consent state as a ruled dot on the row's left edge */}
+                  <span
+                    aria-hidden
+                    className={`absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-r ${
+                      p.access.length ? "bg-pine" : "bg-amber/70"
+                    }`}
+                  />
+                  <div className="flex min-w-0 items-center gap-3">
+                    {/* Leading initials chip — consistent with portal header */}
+                    <span
+                      aria-hidden
+                      className="num flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line-strong bg-paper-sunk text-[11px] font-semibold text-ink"
+                    >
+                      {initials(p.fullName)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink">
+                        {p.fullName}
+                        <span className="ml-2 text-xs font-normal text-ink-soft">
+                          {p.sex ?? ""} {p.dob ? `· b. ${formatDate(p.dob, "short")}` : ""}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-ink-soft">
+                        {p.phone ?? "no phone"} {p.addressCity ? `· ${p.addressCity}` : ""}
+                      </p>
+                      {p.access.length ? (
+                        <p className="mt-0.5 text-[11px] text-ink-faint">
+                          {p.access.length} active grant{p.access.length > 1 ? "s" : ""}
+                          {p.access[0]?.scopes?.length
+                            ? ` · ${p.access[0].scopes.length} scopes`
+                            : ""}
+                          {soonest ? ` · expires ${formatDate(soonest, "short")}` : ""}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2.5">
                     {p.access.length ? (
@@ -108,7 +136,8 @@ export default async function DoctorHome({
                     </Link>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </Card>
         )

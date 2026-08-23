@@ -6,9 +6,21 @@ export const maxDuration = 60;
 
 import type { Metadata } from "next";
 import { desc, eq } from "drizzle-orm";
+import { OrgRetryButton } from "@/components/org-retry-button";
+
+// Module-scope for render purity (react-hooks/purity): evaluated per request.
+const EXTRACTION_STALE_MS = 10 * 60 * 1000;
+function effectiveStatus(d: { extractionStatus: string; createdAt: Date }): string {
+  if (
+    d.extractionStatus === "processing" &&
+    Date.now() - d.createdAt.getTime() > EXTRACTION_STALE_MS
+  )
+    return "failed";
+  return d.extractionStatus;
+}
 import { PageHeader, Card, CardHeader, Badge, Alert } from "@/components/ui";
 import { db } from "@/server/db";
-import { documents, organizations, patients, user as userTable } from "@/server/db/schema";
+import { documents, organizations, user as userTable } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
 import { OrgUploadSection } from "@/components/org-upload";
 import { consent } from "@/server/modules/consent/service";
@@ -36,17 +48,14 @@ export default async function OrgConsole() {
     .from(organizations)
     .where(eq(organizations.id, user.organizationId));
 
-  const [staff, orgPatients, recentDocs] = await Promise.all([
+  const [staff, consentedPatients, recentDocs] = await Promise.all([
     db
       .select({ id: userTable.id, name: userTable.name, role: userTable.role, verificationStatus: userTable.verificationStatus })
       .from(userTable)
       .where(eq(userTable.organizationId, org.id)),
-    db
-      .select({ id: patients.id, fullName: patients.fullName, createdAt: patients.createdAt })
-      .from(patients)
-      .where(eq(patients.organizationId, org.id))
-      .orderBy(desc(patients.createdAt))
-      .limit(10),
+    // Grant-driven, not registration-driven: any patient whose active
+    // consent grants this org the documents scope can be uploaded for.
+    consent.patientsWithDocumentConsent(org.id),
     db
       .select()
       .from(documents)
@@ -54,16 +63,6 @@ export default async function OrgConsole() {
       .orderBy(desc(documents.createdAt))
       .limit(10),
   ]);
-
-  // Facility uploads need document-scope consent — offer only patients who granted it.
-  const consentedPatients = (
-    await Promise.all(
-      orgPatients.map(async (p) => ({
-        ...p,
-        grants: await consent.activeForOrganization(p.id, org.id),
-      })),
-    )
-  ).filter((p) => p.grants.some((g) => (g.scopes as string[]).includes("documents")));
 
   const verified = org.verificationStatus === "verified";
 
@@ -111,15 +110,29 @@ export default async function OrgConsole() {
         <Card>
           <CardHeader eyebrow="Records" title={`Recent uploads (${recentDocs.length})`} />
           <ul className="divide-y divide-line">
-            {recentDocs.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-ink">{d.title}</p>
-                  <p className="text-[11px] text-ink-faint">{formatDate(d.createdAt)}</p>
-                </div>
-                {d.extractionStatus === "done" ? <Badge tone="pine">extracted</Badge> : <Badge>{d.extractionStatus}</Badge>}
-              </li>
-            ))}
+            {recentDocs.map((d) => {
+              const status = effectiveStatus(d);
+              return (
+                <li key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-ink">{d.title}</p>
+                    <p className="text-[11px] text-ink-faint">{formatDate(d.createdAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    {status === "done" ? (
+                      <Badge tone="pine">extracted</Badge>
+                    ) : status === "failed" ? (
+                      <Badge tone="amber">extraction failed</Badge>
+                    ) : (
+                      <Badge>extracting…</Badge>
+                    )}
+                    {status === "failed" ? (
+                      <OrgRetryButton documentId={d.id} patientId={d.patientId} />
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
             {!recentDocs.length ? (
               <li className="px-5 py-4 text-sm text-ink-faint">No uploads yet.</li>
             ) : null}
@@ -130,14 +143,16 @@ export default async function OrgConsole() {
           patients={consentedPatients.map((p) => ({ id: p.id, fullName: p.fullName }))}
         />
 
-        {orgPatients.length ? (
+        {consentedPatients.length ? (
           <Card>
-            <CardHeader eyebrow="Registry" title={`Patients registered by this facility (${orgPatients.length})`} />
+            <CardHeader eyebrow="Consent registry" title={`Patients granting this facility document consent (${consentedPatients.length})`} />
             <ul className="divide-y divide-line">
-              {orgPatients.map((p) => (
+              {consentedPatients.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-5">
                   <p className="text-sm text-ink">{p.fullName}</p>
-                  <p className="text-[11px] text-ink-faint">{formatDate(p.createdAt, "short")}</p>
+                  <p className="text-[11px] text-ink-faint">
+                    consent valid to {formatDate(p.expiresAt, "short")}
+                  </p>
                 </li>
               ))}
             </ul>

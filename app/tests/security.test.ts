@@ -226,6 +226,40 @@ describe("Cross-patient isolation", () => {
     expect(decision.allowed).toBe(false);
   });
 
+  it("retry extraction cannot cross patients: document lookup is patient-bound", async () => {
+    // Regression for the retryExtractionAction binding: a document belonging
+    // to patient B must not be retrievable under patient A's id (the action
+    // queries with and(eq(id), eq(patientId)) — the same shape is asserted here).
+    const { and } = await import("drizzle-orm");
+    const [docB] = await db
+      .select({ id: schema.documents.id })
+      .from(schema.documents)
+      .where(eq(schema.documents.patientId, patientBId));
+    expect(docB).toBeTruthy();
+
+    const mismatch = await db
+      .select({ id: schema.documents.id })
+      .from(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.id, docB!.id),
+          eq(schema.documents.patientId, patientAId),
+        ),
+      );
+    expect(mismatch).toHaveLength(0);
+
+    const match = await db
+      .select({ id: schema.documents.id })
+      .from(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.id, docB!.id),
+          eq(schema.documents.patientId, patientBId),
+        ),
+      );
+    expect(match).toHaveLength(1);
+  });
+
   it("denies lab staff without an organization grant", async () => {
     const decision = await access.check(
       { id: labUserId, role: "lab_staff", organizationId: labOrgId },

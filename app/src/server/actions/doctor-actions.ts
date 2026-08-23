@@ -189,6 +189,93 @@ export async function addClinicalRecordAction(
 /* Document upload (doctors + lab staff)                               */
 /* ------------------------------------------------------------------ */
 
+/** Retry a failed/stale extraction for one document (doctor/lab uploader). */
+export async function retryExtractionAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  const patientId = String(formData.get("patientId") ?? "");
+  const documentId = String(formData.get("documentId") ?? "");
+
+  // Consent + role: same gate as viewing documents for this patient.
+  const decision = await access.check(
+    { id: user.id, role: user.role, organizationId: user.organizationId },
+    patientId,
+    "documents",
+  );
+  if (!decision.allowed) return { error: "Documents consent required." };
+
+  const { db } = await import("@/server/db");
+  const { documents } = await import("@/server/db/schema");
+  const { eq, and } = await import("drizzle-orm");
+  // The document must belong to the consented patient (prevents extracting
+  // another patient's document into this one's chart) and, for facility
+  // roles, to the caller's own organization.
+  const scope =
+    user.role === "doctor"
+      ? and(eq(documents.id, documentId), eq(documents.patientId, patientId))
+      : and(
+          eq(documents.id, documentId),
+          eq(documents.patientId, patientId),
+          eq(documents.organizationId, user.organizationId ?? ""),
+        );
+  const [doc] = await db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      kind: documents.kind,
+      recordedDate: documents.recordedDate,
+      status: documents.extractionStatus,
+    })
+    .from(documents)
+    .where(scope);
+  if (!doc) return { error: "Document not found." };
+  // Throttle: never retry an extraction already in flight (also bounds LLM cost).
+  if (doc.status === "processing") return { error: "Extraction is already running." };
+
+  await db
+    .update(documents)
+    .set({ extractionStatus: "processing", extractionError: null })
+    .where(eq(documents.id, documentId));
+
+  try {
+    await audit.record({
+      actorId: user.id,
+      actorRole: user.role,
+      patientId,
+      action: "document.extraction.retried",
+      resourceType: "document",
+      resourceId: documentId,
+    });
+  } catch (err) {
+    console.error("[audit] write failed (document.extraction.retried)", err);
+  }
+
+  after(async () => {
+    try {
+      await runExtraction(documentId, {
+        patientId,
+        userId: user.id,
+        organizationId: user.organizationId,
+        title: doc.title,
+        kind: doc.kind,
+        recordedDate: doc.recordedDate ?? undefined,
+      });
+    } catch {
+      await db
+        .update(documents)
+        .set({ extractionStatus: "failed" })
+        .where(eq(documents.id, documentId))
+        .catch(() => undefined);
+    }
+  });
+
+  revalidatePath(`/portal/doctor/patients/${patientId}`);
+  revalidatePath("/portal/org");
+  return { ok: "Extraction retry started." };
+}
+
 export async function uploadDocumentAction(
   _prev: FormState,
   formData: FormData,

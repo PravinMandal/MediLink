@@ -8,7 +8,7 @@ import { records } from "@/server/modules/records/service";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { notify } from "@/server/modules/notifications/service";
 import { audit } from "@/server/modules/audit/service";
-import { formatDate, formatTime, TRUST_LABEL } from "@/lib/utils";
+import { formatDate, formatTime, TRUST_LABEL, formatAuditAction } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Dashboard", description: "Overview of your record: blood group, allergies, medications, and recent activity." };
 
@@ -200,7 +200,7 @@ export default async function PatientDashboard() {
               accessLog.map((e) => (
                 <li key={e.seq} className="flex items-center justify-between gap-2 px-4 py-3 sm:px-5">
                   <div>
-                    <p className="num text-[12.5px] text-ink">{e.action}</p>
+                    <p className="text-[12.5px] text-ink">{formatAuditAction(e.action)}</p>
                     <p className="text-[11px] text-ink-faint">{formatTime(e.createdAt)}</p>
                   </div>
                   {e.action.includes("emergency") ? <Badge tone="alert">Break-glass</Badge> : null}

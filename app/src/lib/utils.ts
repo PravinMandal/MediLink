@@ -59,6 +59,42 @@ export const TRUST_LABEL: Record<string, string> = {
   amended: "Amended",
 };
 
+/** Human label for every audit action the platform writes — the patient's
+ *  access log must read as prose, never raw snake_case codes. */
+export const AUDIT_ACTION_LABEL: Record<string, string> = {
+  "document.viewed": "Viewed a source document",
+  "document.uploaded": "Uploaded a document",
+  "document.extraction.retried": "Retried document extraction",
+  "ai.summary.generated": "Generated an AI summary",
+  "consent.granted": "You granted access",
+  "consent.revoked": "You revoked access",
+  "consent.requested": "Requested access to your records",
+  "consent.expired": "A consent expired",
+  "emergency.break_glass": "EMERGENCY ACCESS USED",
+  "emergency.profile.viewed": "Viewed the emergency profile",
+  "emergency.review.approved": "Break-glass reviewed: approved",
+  "emergency.review.flagged": "Break-glass reviewed: FLAGGED",
+  "record.condition.created": "Added a condition",
+  "record.allergy.created": "Added an allergy",
+  "record.medication.created": "Added a medication",
+  "record.procedure.created": "Added a procedure",
+  "record.encounter.created": "Recorded an encounter",
+  "record.immunization.created": "Administered an immunization",
+  "record.observations.batch_created": "Added lab results",
+  "record.superseded": "Updated a record (old version kept)",
+  "patient.created": "Record created",
+  "patient.profile.updated": "You updated your profile",
+  "patient.viewed": "Opened your record",
+  "patient.account.linked": "Account linked to record",
+  "practitioner.verification.submitted": "Submitted verification",
+  "user.role.granted": "Role granted by an administrator",
+  "organization.created": "Facility registered",
+};
+
+export function formatAuditAction(action: string): string {
+  return AUDIT_ACTION_LABEL[action] ?? action.replace(/[._]/g, " ");
+}
+
 export const KIND_LABEL: Record<string, string> = {
   condition: "Condition",
   allergy: "Allergy",

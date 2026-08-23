@@ -420,6 +420,17 @@ Advice: cardiac rehab, review 6 weeks.`,
     );
   }
 
+  console.log("→ Pre-generating the golden patient's SBAR summary…");
+  {
+    const { summarizer } = await import("../src/server/modules/ai/summarize");
+    const { ALL_SCOPES } = await import("../src/server/modules/consent/service");
+    await summarizer.generate({
+      patientId: rahul.id,
+      requestedById: meeraUserId,
+      scopes: [...ALL_SCOPES],
+    });
+  }
+
   console.log("→ Audit chain verification…");
   const broken = await audit.verifyChain();
   console.log(broken === null ? "   chain intact ✓" : `   CHAIN BROKEN at seq ${broken}`);

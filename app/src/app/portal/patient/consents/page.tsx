@@ -11,9 +11,11 @@ import {
 } from "@/server/modules/identity/verification";
 import { db } from "@/server/db";
 import { practitioners } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { GrantConsentForm, RevokeConsentButton, ScopeBadges } from "@/components/consent-forms";
-import { formatDate } from "@/lib/utils";
+import { ConsentRequestCard } from "@/components/consent-request-card";
+import { audit } from "@/server/modules/audit/service";
+import { formatDate, formatTime } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Consents", description: "Grant, review, and revoke access to your medical record." };
 
@@ -45,6 +47,50 @@ export default async function PatientConsents() {
   ]);
   void me;
 
+  /* Pending access requests: recent consent.requested audit events from
+     doctors who don't yet hold an active grant. */
+  const requestedEvents = (await audit.forPatient(patient.id, 200))
+    .filter((e) => e.action === "consent.requested")
+    .slice(0, 20);
+  const requesterUserIds = [
+    ...new Set(requestedEvents.map((e) => e.actorId).filter((x): x is string => !!x)),
+  ];
+  const requesters = requesterUserIds.length
+    ? await db
+        .select({
+          id: practitioners.id,
+          userId: practitioners.userId,
+          fullName: practitioners.fullName,
+          specialty: practitioners.specialty,
+        })
+        .from(practitioners)
+        .where(inArray(practitioners.userId, requesterUserIds))
+    : [];
+  const requesterByUserId = new Map(
+    requesters
+      .filter((p) => p.userId)
+      .map((p) => [p.userId as string, p]),
+  );
+  const activeGranteePractitionerIds = new Set(
+    grants
+      .filter((g) => g.status === "active" && g.granteePractitionerId)
+      .map((g) => g.granteePractitionerId),
+  );
+  const seenRequesters = new Set<string>();
+  const pendingRequests = requestedEvents
+    .map((e) => {
+      const p = e.actorId ? requesterByUserId.get(e.actorId) : undefined;
+      return p ? { event: e, practitioner: p } : null;
+    })
+    .filter((x): x is { event: (typeof requestedEvents)[number]; practitioner: (typeof requesters)[number] } => !!x)
+    .filter(({ practitioner }) => {
+      if (activeGranteePractitionerIds.has(practitioner.id)) return false;
+      if (seenRequesters.has(practitioner.id)) return false;
+      seenRequesters.add(practitioner.id);
+      return true;
+    })
+    .slice(0, 3);
+
   const orgOptions = verifiedOrgs.map((o) => ({
     id: o.id,
     label: o.name,
@@ -60,6 +106,33 @@ export default async function PatientConsents() {
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        {pendingRequests.length ? (
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader
+                eyebrow="Access requests"
+                title={`${pendingRequests.length} doctor${pendingRequests.length > 1 ? "s" : ""} waiting for your approval`}
+                action={<Badge tone="amber">Action needed</Badge>}
+              />
+              <div className="space-y-3 px-4 py-4 sm:px-5">
+                {pendingRequests.map(({ event, practitioner }) => (
+                  <ConsentRequestCard
+                    key={event.seq}
+                    req={{
+                      key: String(event.seq),
+                      practitionerId: practitioner.id,
+                      practitionerName: practitioner.fullName,
+                      specialty: practitioner.specialty,
+                      requestedAt: formatTime(event.createdAt),
+                      purposes: "consultation",
+                    }}
+                  />
+                ))}
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
         <Card>
           <CardHeader eyebrow="New grant" title="Give a doctor access" />
           <GrantConsentForm

@@ -28,6 +28,9 @@ export async function updatePatientProfileAction(
       emergencyContactPhone: String(formData.get("ecPhone") ?? "") || undefined,
       bloodGroupSelfReported:
         String(formData.get("bloodGroup") ?? "") || undefined,
+      // 14-digit ABHA; digits/hyphens normalized, otherwise cleared.
+      abhaNumber:
+        String(formData.get("abha") ?? "").replace(/[\s-]/g, "") || undefined,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;

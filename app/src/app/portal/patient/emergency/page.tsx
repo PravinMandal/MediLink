@@ -6,6 +6,8 @@ import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { records } from "@/server/modules/records/service";
 import { EmergencyProfileForm } from "@/components/patient-forms";
+import { EmergencyCard } from "@/components/emergency-card";
+import { PrintEmergencyCard } from "@/components/print-card-button";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Emergency profile", description: "Critical information available to doctors via audited emergency access." };
@@ -32,6 +34,46 @@ export default async function EmergencyProfile() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="space-y-5">
+          <div>
+            <EmergencyCard
+              data={{
+                patientName: patient.fullName,
+                patientId: patient.id,
+                sex: patient.sex,
+                dob: patient.dob,
+                bloodGroup: bloodGroup.verified?.value ?? bloodGroup.selfReported ?? "—",
+                bloodGroupVerified: !!bloodGroup.verified,
+                allergies: allergies.map((a) => ({
+                  substance: a.substance,
+                  criticality: a.criticality,
+                  reaction: a.reaction,
+                })),
+                meds: meds.map((m) => ({
+                  medication: m.medication,
+                  dose: m.dose,
+                  frequency: m.frequency,
+                })),
+                conditions: conds
+                  .filter((c) => c.status !== "resolved")
+                  .map((c) => ({ name: c.name, onsetDate: c.onsetDate })),
+                ecName: patient.emergencyContactName,
+                ecPhone: patient.emergencyContactPhone,
+                // Scanned by a treating doctor: the middleware bounces an
+                // unauthenticated visit to sign-in with `next` set, so the
+                // doctor lands straight on the record page, whose access
+                // check enforces consent and offers audited break-glass.
+                emergencyUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/doctor/patients/${patient.id}`,
+              }}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <PrintEmergencyCard />
+              <p className="text-[11px] text-ink-faint">
+                Wallet-size. The QR routes a treating doctor through the audited
+                emergency path — never a silent copy.
+              </p>
+            </div>
+          </div>
+
           <Card>
             <CardHeader eyebrow="What doctors see" title="Critical information" />
             <dl className="divide-y divide-line text-sm">

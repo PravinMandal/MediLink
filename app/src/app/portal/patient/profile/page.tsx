@@ -51,6 +51,7 @@ export default async function PatientProfile() {
               phone: user.phone,
               city: patient.addressCity,
               patientPhone: patient.phone,
+              abha: patient.abhaNumber,
             }}
           />
         </Card>

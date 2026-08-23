@@ -1,7 +1,7 @@
 /**
  * In-app notifications (email/SMS/WhatsApp adapters can subscribe later).
  */
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { notifications } from "@/server/db/schema";
 
@@ -26,13 +26,13 @@ export const notify = {
   },
 
   async unreadCount(userId: string): Promise<number> {
-    const rows = await db
-      .select({ id: notifications.id })
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(notifications)
       .where(
         and(eq(notifications.userId, userId), isNull(notifications.readAt)),
       );
-    return rows.length;
+    return row?.count ?? 0;
   },
 
   async markRead(userId: string, id: string) {

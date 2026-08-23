@@ -65,6 +65,25 @@ body {
   color: var(--color-pine-ink);
 }
 
+/* Emergency-card print isolation: body.printing-card hides everything but the
+   card (and the print button's own row is hidden too). */
+@media print {
+  body.printing-card * {
+    visibility: hidden;
+  }
+  body.printing-card .print-card,
+  body.printing-card .print-card * {
+    visibility: visible;
+  }
+  body.printing-card .print-card {
+    position: absolute;
+    inset: 0 auto auto 50%;
+    transform: translateX(-50%);
+    max-width: 420px;
+    box-shadow: none;
+  }
+}
+
 /* Tabular numerals wherever data lives */
 .num {
   font-family: var(--font-mono);

@@ -13,6 +13,7 @@ export const patientService = {
     sex?: string;
     phone?: string;
     bloodGroupSelfReported?: string;
+    abhaNumber?: string;
     addressCity?: string;
     emergencyContactName?: string;
     emergencyContactPhone?: string;
@@ -82,6 +83,7 @@ export const patientService = {
       emergencyContactName: string;
       emergencyContactPhone: string;
       bloodGroupSelfReported: string;
+      abhaNumber: string;
     }>,
   ) {
     const [row] = await db

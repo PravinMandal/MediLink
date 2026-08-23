@@ -72,6 +72,7 @@ export function ProfileForm({
     phone: string | null;
     city: string | null;
     patientPhone: string | null;
+    abha: string | null;
   };
 }) {
   const [state, action] = useActionState(updatePatientProfileAction, {});
@@ -86,6 +87,20 @@ export function ProfileForm({
           <Input id="p-city" name="city" defaultValue={initial.city ?? ""} placeholder="e.g. Pune" />
         </Field>
       </div>
+      <Field
+        label="ABHA number (optional)"
+        htmlFor="p-abha"
+        hint="Your Ayushman Bharat Health Account — links this record to India's national health ID."
+      >
+        <Input
+          id="p-abha"
+          name="abha"
+          inputMode="numeric"
+          defaultValue={initial.abha ?? ""}
+          placeholder="14-digit ABHA"
+          className="num"
+        />
+      </Field>
       <FormErrorSummary errors={[state.error]} />
       {state.ok ? (
         <p role="status" className="text-[13px] font-medium text-pine">{state.ok}</p>

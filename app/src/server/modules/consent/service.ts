@@ -4,7 +4,7 @@
  */
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "@/server/db";
-import { consents, organizations, practitioners } from "@/server/db/schema";
+import { consents, organizations, patients, practitioners } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
 import { notify } from "@/server/modules/notifications/service";
 
@@ -210,5 +210,49 @@ export const consent = {
           gt(consents.expiresAt, new Date()),
         ),
       );
+  },
+
+  /** Patients with an ACTIVE document-scope grant to this organization —
+   *  the source of truth for who a facility may upload for, regardless of
+   *  which facility registered them. */
+  async patientsWithDocumentConsent(organizationId: string) {
+    const rows = await db
+      .select({
+        id: patients.id,
+        fullName: patients.fullName,
+        createdAt: patients.createdAt,
+        expiresAt: consents.expiresAt,
+        scopes: consents.scopes,
+      })
+      .from(consents)
+      .innerJoin(patients, eq(patients.id, consents.patientId))
+      .where(
+        and(
+          eq(consents.granteeOrganizationId, organizationId),
+          eq(consents.status, "active"),
+          gt(consents.expiresAt, new Date()),
+        ),
+      )
+      .orderBy(desc(consents.createdAt))
+      .limit(50);
+    const seen = new Set<string>();
+    const out: Array<{
+      id: string;
+      fullName: string;
+      createdAt: Date;
+      expiresAt: Date;
+    }> = [];
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      if (!(r.scopes as string[]).includes("documents")) continue;
+      seen.add(r.id);
+      out.push({
+        id: r.id,
+        fullName: r.fullName,
+        createdAt: r.createdAt,
+        expiresAt: r.expiresAt,
+      });
+    }
+    return out;
   },
 };

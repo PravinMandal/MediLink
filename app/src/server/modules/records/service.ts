@@ -762,6 +762,20 @@ export const records = {
       .orderBy(desc(encounters.occurredAt));
   },
 
+  /** First + last encounter dates for the glance header (no row bodies). */
+  async encounterSpan(patientId: string) {
+    const rows = await db
+      .select({ occurredAt: encounters.occurredAt })
+      .from(encounters)
+      .where(eq(encounters.patientId, patientId))
+      .orderBy(desc(encounters.occurredAt))
+      .limit(200);
+    if (!rows.length) return null;
+    const last = rows[0]!.occurredAt;
+    const first = rows[rows.length - 1]!.occurredAt;
+    return { first, last, count: rows.length };
+  },
+
   async documentsFor(patientId: string) {
     // Exclude textExtract (potentially the full document text) from list
     // queries; the document detail/read paths select it explicitly.

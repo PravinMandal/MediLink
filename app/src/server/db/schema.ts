@@ -330,6 +330,9 @@ export const patients = pgTable(
     // have not signed up yet (created by organizations during care).
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     mrn: text("mrn"),
+    // India's national health ID (ABHA). Optional; displayed on the record
+    // header when present. Linking/verification via ABDM is a future adapter.
+    abhaNumber: text("abha_number"),
     fullName: text("full_name").notNull(),
     dob: text("dob"), // ISO date string
     sex: text("sex"),
