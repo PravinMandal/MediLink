@@ -35,8 +35,11 @@ export function RouteError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface for diagnostics; the boundary itself stays user-facing.
-    console.error(error);
+    // Surface for diagnostics; the boundary itself stays user-facing. In
+    // production only the digest goes to the client console — raw messages
+    // can embed internal hostnames.
+    if (process.env.NODE_ENV === "production") console.error(error.digest ?? "route-error");
+    else console.error(error);
   }, [error]);
 
   const isDbDown = DB_CONNECTION_RE.test(

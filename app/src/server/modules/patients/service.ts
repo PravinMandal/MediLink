@@ -56,8 +56,13 @@ export const patientService = {
    * free tier) and on PGlite.
    */
   async search(query: string, limit = 20) {
-    const q = `%${query.trim()}%`;
-    if (!query.trim()) return [];
+    const trimmed = query.trim();
+    // DPDP-aligned default (stakeholder Q5): directory probing is minimized —
+    // single/double-character queries are rejected so wildcards can't walk
+    // the registry. DOB/phone remain searchable by design (doctors search by
+    // phone fragments), but only a 3+ char committed query gets results.
+    if (trimmed.length < 3) return [];
+    const q = `%${trimmed}%`;
     return db
       .select({
         id: patients.id,

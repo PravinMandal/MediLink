@@ -19,7 +19,7 @@ export function PatientSearchForm({ initialQuery }: { initialQuery?: string }) {
         type="search"
         name="q"
         defaultValue={initialQuery ?? ""}
-        placeholder="Search “Rahul”, “98765…”, “cardiac”…"
+        placeholder="Search “Rahul”, “98765…”, “cardiac”… (3+ characters)"
         aria-label="Search patients"
         className="h-11 flex-1 rounded-md border border-line-strong bg-paper-raised px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none"
       />
