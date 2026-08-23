@@ -83,3 +83,9 @@ Explorer-3 audited the unexamined surfaces (portal dispatcher, sign-up flow, 3D 
 - Sign-up dead ends closed: post-signup sign-in failure → /sign-in?registered=1 with a status message; weak-password errors surfaced; doctors land on /portal/doctor/verification after signup.
 - Portal dispatcher redirects unauthenticated visitors straight to /sign-in; ageFrom guards future DOBs; README refreshed (live URL, feature list, env-file note).
 Deployed; production 26/26.
+
+## Round 20 — 2026-08-23 09:51
+Shipped: patient search 3-char minimum (D26, DPDP researched default for stakeholder Q5); RouteError logs digest-only in production console. Deployed; committed/pushed.
+
+## Round 21 — 2026-08-23 09:58
+Shipped: a11y hardening — axe-core audit across marketing/dashboard/emergency/timeline; fixed the dl structure violation (conflict note moved out of the dl); all four surfaces now 0 serious/critical violations. React Compiler evaluated and deliberately not enabled (D27 — researched rationale). Deployed; production 26/26.

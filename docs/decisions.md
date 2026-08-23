@@ -1,5 +1,9 @@
 # Decision Log — MediLink Overhaul
 
+## D27 — React Compiler: researched decision NOT to enable (2026-08-23)
+**Decision:** Keep `reactCompiler` off. Documented rationale: it's stable-but-off in Next 16 because it reintroduces Babel into the Turbopack pipeline (higher build times), the app is server-component-dominant (only ~10 client leaves, so INP wins are marginal), and community guidance recommends annotation-mode migration + pinned versions before global enablement. Revisit when the Rust port (`experimental.turbopackRustReactCompiler`) is stable.
+**Sources:** nextjs.org/docs reactCompiler + turbopackRustReactCompiler, nextjs.org/blog/next-16.
+
 ## D26 — Patient directory search minimum length (2026-08-23)
 **Decision:** `patientService.search` rejects queries under 3 characters server-side; the doctor search placeholder communicates the minimum; RouteError logs only the digest to the client console in production.
 **Rationale:** Resolves stakeholder Q5 with a researched default: DPDP Act 2023 lacks a HIPAA-style treatment-purpose exception, so directory probing is minimized — short/wildcard queries can no longer enumerate the patient registry.
