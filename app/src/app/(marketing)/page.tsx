@@ -194,8 +194,7 @@ export default function MarketingHome() {
                 &ldquo;Data exists&rdquo; is not&nbsp;&ldquo;data is&nbsp;trustworthy.&rdquo;
               </h2>
               <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-ink-soft">
-                Any system can store a number. MediLink stores the eight questions a
-                court — or a surgeon — would ask of it:
+                Eight questions a court — or a surgeon — would ask of every number:
               </p>
               <dl className="mt-6 grid max-w-lg grid-cols-2 gap-x-6 gap-y-2.5">
                 {[
