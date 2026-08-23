@@ -1,5 +1,9 @@
 # Decision Log — MediLink Overhaul
 
+## D26 — Patient directory search minimum length (2026-08-23)
+**Decision:** `patientService.search` rejects queries under 3 characters server-side; the doctor search placeholder communicates the minimum; RouteError logs only the digest to the client console in production.
+**Rationale:** Resolves stakeholder Q5 with a researched default: DPDP Act 2023 lacks a HIPAA-style treatment-purpose exception, so directory probing is minimized — short/wildcard queries can no longer enumerate the patient registry.
+
 ## D25 — Explorer-3 correctness + polish batch (2026-08-23)
 **Decision:** Contradiction engine: conflicts dedupe on a content hash key (`_key` in details) so distinct conflicting analytes/allergies coexist; `resolve()` merges the resolution note into existing details (never wipes evidence). Root `not-found.tsx` (on-brand 404) and `global-error.tsx` (inline styles, digest-only logging in prod). Sign-up: post-signup sign-in failure redirects to `/sign-in?registered=1` with an explicit status message; weak-password errors surfaced as field feedback; doctors land on `/portal/doctor/verification` after signup. Portal dispatcher sends unauthenticated visitors directly to /sign-in. `ageFrom` returns null for future DOBs.
 **Rationale:** Explorer-3 found the contradiction engine silently collapsing same-kind conflicts and resolve() destroying evidence — the only genuine correctness bugs of the round; the rest are the last unpolished surfaces (default-styled 404/layout crashes) and dead ends.

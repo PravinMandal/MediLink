@@ -76,6 +76,12 @@ export default async function EmergencyProfile() {
 
           <Card>
             <CardHeader eyebrow="What doctors see" title="Critical information" />
+            {bloodGroup.conflict ? (
+              <p role="note" className="bg-alert-tint px-4 py-2 text-[12px] text-alert sm:px-5">
+                ⚠ Self-reported ({bloodGroup.selfReported}) conflicts with the verified lab value
+                below — the verified value is shown to doctors.
+              </p>
+            ) : null}
             <dl className="divide-y divide-line text-sm">
               <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
                 <dt className="text-ink-soft">Blood group</dt>
@@ -90,12 +96,6 @@ export default async function EmergencyProfile() {
                   )}
                 </dd>
               </div>
-              {bloodGroup.conflict ? (
-                <div role="note" className="bg-alert-tint px-4 py-2 text-[12px] text-alert sm:px-5">
-                  ⚠ Self-reported ({bloodGroup.selfReported}) conflicts with the verified lab value
-                  above — the verified value is shown to doctors.
-                </div>
-              ) : null}
               <div className="px-4 py-3 sm:px-5">
                 <dt className="mb-1.5 text-ink-soft">Allergies</dt>
                 <dd className="space-y-1">
