@@ -32,13 +32,27 @@ export default async function PatientDocuments() {
       ) : (
         <Card>
           <ul className="divide-y divide-line">
-            {docs.map((d) => (
-              <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+            {docs.map((d) => {
+              // Same staleness rule as the doctor/org views: a "processing"
+              // doc older than 10 minutes is dead.
+              const status =
+                d.extractionStatus === "processing" &&
+                Date.now() - d.createdAt.getTime() > 10 * 60 * 1000
+                  ? "failed"
+                  : d.extractionStatus;
+              return (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-ink">{d.title}</p>
                     <Badge>{d.kind.replace(/_/g, " ")}</Badge>
-                    {d.extractionStatus === "done" ? <Badge tone="pine">structured ✓</Badge> : null}
+                    {status === "done" ? (
+                      <Badge tone="pine">structured ✓</Badge>
+                    ) : status === "failed" ? (
+                      <Badge tone="amber">extraction failed</Badge>
+                    ) : status === "processing" ? (
+                      <Badge>extracting…</Badge>
+                    ) : null}
                   </div>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {formatDate(d.recordedDate ?? d.createdAt)}
@@ -56,7 +70,8 @@ export default async function PatientDocuments() {
                   Open ↗
                 </a>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </Card>
       )}
