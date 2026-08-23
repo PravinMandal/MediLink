@@ -156,6 +156,11 @@ export default async function AdminPage() {
           <CardHeader
             eyebrow="Break-glass oversight"
             title={`Emergency access events (${emergencyEvents.length})`}
+            action={
+              emergencyEvents.length >= 10 ? (
+                <Badge tone="amber">latest 10</Badge>
+              ) : undefined
+            }
           />
           {emergencyEvents.length ? (
             <ul className="divide-y divide-line">
@@ -170,6 +175,11 @@ export default async function AdminPage() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-ink-soft">“{event.reason}”</p>
+                  {event.reviewNotes ? (
+                    <p className="mt-0.5 text-[11px] text-ink-faint">
+                      Reviewer note: {event.reviewNotes}
+                    </p>
+                  ) : null}
                   <p className="mt-0.5 text-[11px] text-ink-faint">
                     {formatTime(event.accessedAt)} ·{" "}
                     {event.patientNotifiedAt

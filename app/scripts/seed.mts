@@ -132,7 +132,7 @@ async function main() {
     organizationId: lakeview.organization.id,
   });
   // Pending practitioner → admin queue
-  await identity.submitPractitionerVerification({
+  const sanjay = await identity.submitPractitionerVerification({
     userId: sanjayUserId,
     fullName: "Dr. Sanjay Nair",
     registrationNumber: "MMC/2019/51777",
@@ -418,6 +418,32 @@ Advice: cardiac rehab, review 6 weeks.`,
       { panel: "Thyroid", name: "TSH", value: 6.8, unit: "µIU/mL", referenceRangeLow: 0.4, referenceRangeHigh: 4.0, flag: "high", effectiveDate: "2026-02-10" },
       { authoredById: labUserId, organizationId: sunrise.organization.id, trust: "extracted" },
     );
+  }
+
+  console.log("→ Seeding a reviewed break-glass event (admin oversight demo)…");
+  {
+    const { emergencyAccessEvents } = await import("../src/server/db/schema");
+    const now = Date.now();
+    await db.insert(emergencyAccessEvents).values({
+      patientId: rahul.id,
+      practitionerId: sanjay.practitioner.id,
+      reason: "Unconscious patient in ER; allergies and medications needed immediately.",
+      accessedAt: new Date(now - 3 * 24 * 3600 * 1000),
+      expiresAt: new Date(now - 3 * 24 * 3600 * 1000 + 60 * 60 * 1000),
+      patientNotifiedAt: new Date(now - 3 * 24 * 3600 * 1000),
+      reviewStatus: "approved",
+      reviewNotes: "Legitimate ER use — matched admission record at City General.",
+      reviewedBy: adminId,
+    });
+    await audit.record({
+      actorId: sanjayUserId,
+      actorRole: "doctor",
+      patientId: rahul.id,
+      action: "emergency.break_glass",
+      resourceType: "emergency_access",
+      resourceId: "seed-demo-event",
+      reason: "Unconscious patient in ER; allergies and medications needed immediately.",
+    });
   }
 
   console.log("→ Pre-generating the golden patient's SBAR summary…");
