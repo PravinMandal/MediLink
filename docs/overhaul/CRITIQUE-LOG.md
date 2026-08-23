@@ -105,3 +105,9 @@ Shipped: journey DOM rail now syncs with scroll progress (active step highlighte
 
 ## Round 26 — 2026-08-23 10:43
 Found via org-upload E2E: SUPABASE_SERVICE_ROLE_KEY in .env is INVALID (storage writes 403 "Invalid Compact JWS") — all document uploads fail on the current deployment. Cannot fix credentials autonomously; shipped honest error surfacing ("Document storage is not configured correctly…") + stakeholder Q8 documenting the exact fix. Org uploads list raised to 20 (new uploads were invisible past the seeded 10). Deployed; production 26/26.
+
+## Round 27 — 2026-08-23 10:46
+Marketing copy trim (checklist intro deduplicated). Deployed; production 26/26.
+
+## Round 28 — 2026-08-23 10:58
+Break-glass flow E2E-verified (collapsed form → reason → emergency banner + critical profile visible); lint now has ZERO problems (last two unused-var warnings resolved). Comprehensive gate sweep: 31/31 tests, tsc clean, build green, all E2E scripts pass, 26/26 behavioral, production 26/26.
