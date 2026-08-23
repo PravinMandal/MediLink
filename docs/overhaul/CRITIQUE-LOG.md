@@ -95,3 +95,6 @@ Shipped: print-summary button on the patient dashboard (generic PrintCardButton,
 
 ## Round 23 — 2026-08-23 10:09
 Shipped: patient documents page extraction status chips + staleness rule (parity with doctor/org views). Deployed; production 26/26.
+
+## Round 24 — 2026-08-23 10:16 — performance probe
+Production perf probe: marketing initial JS 164KB (~50KB gz) with the 232KB three.js chunk loading only on scroll (lazy-load verified working as designed); sign-in DCL 379ms; doctor record DCL 404ms (wall time dominated by DB round-trips, expected for force-dynamic consent-scoped pages). Sign-up demo hint added. Deployed; production 26/26.
