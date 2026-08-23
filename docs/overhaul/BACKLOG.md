@@ -99,3 +99,7 @@ Tiers: P0 correctness/security → P1 broken/missing core → P2 core UX → P3 
 
 **Session 2 final state: 31/31 tests · tsc clean · lint 0/0 · build green · 26/26 behavioral (local + production) · axe clean · Juror 9.2/10.**
 
+## Future session ideas
+- ☐ Tokenize the motion system: formalize 2 eases + 3 durations as shared tokens (design-research brief: Mat Voyce-style single motion language; current animations use hand-picked cubic-beziers)
+- ☐ Dark marketing hero variant (near-black pine surfaces, per Bloom case study) — current direction is light "clinical paper"; needs a design decision before attempting
+
