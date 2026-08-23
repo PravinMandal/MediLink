@@ -363,6 +363,15 @@ export async function uploadDocumentAction(
     if (message.startsWith("Unsupported")) return { error: message };
     if (message === "VERIFICATION_REQUIRED")
       return { error: "Your practitioner verification is still pending." };
+    // Storage misconfiguration is the common deploy-time failure — surface
+    // it distinctly instead of a generic retry message.
+    if (message.includes("Supabase storage")) {
+      console.error("[upload] storage adapter failed", message);
+      return {
+        error:
+          "Document storage is not configured correctly on this deployment (Supabase credentials rejected). The administrator must fix SUPABASE_SERVICE_ROLE_KEY.",
+      };
+    }
     return { error: "Upload failed. Try again." };
   }
 

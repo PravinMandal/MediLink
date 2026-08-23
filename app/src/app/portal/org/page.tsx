@@ -61,7 +61,7 @@ export default async function OrgConsole() {
       .from(documents)
       .where(eq(documents.organizationId, org.id))
       .orderBy(desc(documents.createdAt))
-      .limit(10),
+      .limit(20),
   ]);
 
   const verified = org.verificationStatus === "verified";
