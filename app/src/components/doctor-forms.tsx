@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { Siren } from "lucide-react";
 import {
   addClinicalRecordAction,
   uploadDocumentAction,
@@ -113,7 +114,7 @@ export function RequestAccessForm({ patientId }: { patientId: string }) {
 /* Break-glass                                                         */
 /* ------------------------------------------------------------------ */
 
-export function BreakGlassForm({ patientId }: { patientId: string }) {
+export function BreakGlassForm({ patientId }: { patientId?: string }) {
   const [state, action] = useActionState(breakGlassAction, {});
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -170,13 +171,32 @@ export function BreakGlassForm({ patientId }: { patientId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full cursor-pointer rounded-lg border border-alert/40 bg-alert-tint px-4 py-3 text-left transition-colors hover:border-alert"
+        className="glass-hover group w-full cursor-pointer rounded-xl border border-alert/50 bg-alert-tint px-4 py-4 text-left transition-all hover:border-alert hover:shadow-md"
       >
-        <p className="text-sm font-semibold text-alert">Emergency — break-glass access</p>
-        <p className="mt-0.5 text-xs text-alert/80">
-          For genuine emergencies only. Requires a clinical reason; 60-minute window; patient
-          notified; permanently audited.
-        </p>
+        <span className="flex items-center gap-3">
+          <span
+            aria-hidden
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-alert text-on-alert shadow-sm"
+          >
+            <Siren size={20} />
+          </span>
+          <span className="flex-1">
+            <span className="block text-sm font-bold text-alert">
+              Start an emergency window
+            </span>
+            <span className="mt-0.5 block text-xs text-ink-soft">
+              For genuine emergencies only — requires a clinical reason and
+              password confirmation. 60-minute window; patient notified;
+              permanently audited.
+            </span>
+          </span>
+          <span
+            aria-hidden
+            className="text-alert transition-transform duration-200 group-hover:translate-x-0.5"
+          >
+            →
+          </span>
+        </span>
       </button>
     );
   }
@@ -191,10 +211,19 @@ export function BreakGlassForm({ patientId }: { patientId: string }) {
       className="space-y-3 rounded-lg border border-alert bg-alert-tint px-4 py-4 focus:outline-none"
     >
       <form action={action} className="space-y-3">
-        <input type="hidden" name="patientId" value={patientId} />
+        <input type="hidden" name="patientId" value={patientId ?? ""} />
         <p id="bg-title" className="text-sm font-semibold text-alert">
           State the clinical reason for emergency access
         </p>
+        <Field label="Patient ID or ABHA number" htmlFor="bg-patient">
+          <Input
+            id="bg-patient"
+            name="patientIdText"
+            defaultValue={patientId ?? ""}
+            placeholder="ML-XXXXX-XXXXX-C or 14-digit ABHA"
+            required
+          />
+        </Field>
         <Textarea
           name="reason"
           required
@@ -211,6 +240,20 @@ export function BreakGlassForm({ patientId }: { patientId: string }) {
             {reasonError}
           </p>
         ) : null}
+        <Field
+          label="Confirm your password"
+          htmlFor="bg-stepup"
+          hint="Emergency access requires confirming your password."
+        >
+          <Input
+            id="bg-stepup"
+            name="stepUpPassword"
+            type="password"
+            autoComplete="current-password"
+            placeholder="Your account password"
+            className="border-alert/40"
+          />
+        </Field>
         {state.error && !reasonError ? (
           <p role="alert" className="text-[13px] font-medium text-alert">{state.error}</p>
         ) : null}
@@ -221,7 +264,7 @@ export function BreakGlassForm({ patientId }: { patientId: string }) {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="cursor-pointer rounded-md px-3 text-[13px] font-medium text-ink-soft hover:text-ink"
+            className="cursor-pointer rounded-lg px-3 text-[13px] font-medium text-ink-soft hover:text-ink"
           >
             Cancel
           </button>
@@ -267,7 +310,7 @@ export function AddRecordForm({ patientId }: { patientId: string }) {
             aria-selected={kind === k.value}
             onClick={() => setKind(k.value)}
             className={
-              "cursor-pointer rounded-md border px-2.5 py-1.5 text-[13px] font-medium transition-colors " +
+              "cursor-pointer rounded-lg border px-2.5 py-1.5 text-[13px] font-medium transition-colors " +
               (kind === k.value
                 ? "border-pine bg-pine-tint text-pine-ink"
                 : "border-line bg-paper-raised text-ink-soft hover:border-line-strong")
@@ -494,7 +537,7 @@ export function UploadDocumentForm({ patientId }: { patientId: string }) {
                 .join(" ") || undefined
             }
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/*,text/plain"
-            className="w-full cursor-pointer rounded-md border border-line-strong bg-paper-raised px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-pine-tint file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-pine-ink"
+            className="w-full cursor-pointer rounded-lg border border-line-strong bg-paper-raised px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-pine-tint file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-pine-ink"
           />
         </Field>
       </div>

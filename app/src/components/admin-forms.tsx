@@ -70,7 +70,7 @@ function ReviewButtons({
           <button
             type="button"
             onClick={() => setConfirming(false)}
-            className="cursor-pointer rounded-md border border-line-strong bg-paper-raised px-2.5 h-8 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink"
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-raised px-2.5 h-8 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink"
           >
             Cancel
           </button>
@@ -92,7 +92,7 @@ function ReviewButtons({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="cursor-pointer rounded-md border border-line-strong bg-paper-raised px-2.5 h-8 text-[13px] font-medium text-ink-soft transition-colors hover:border-alert hover:text-alert"
+            className="cursor-pointer rounded-lg border border-line-strong bg-paper-raised px-2.5 h-8 text-[13px] font-medium text-ink-soft transition-colors hover:border-alert hover:text-alert"
           >
             {rejectLabel}
           </button>

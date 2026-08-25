@@ -26,7 +26,7 @@ export function ConsentRequestCard({ req }: { req: ConsentRequestView }) {
   return (
     <form
       action={action}
-      className="rounded-lg border border-pine/40 bg-pine-tint/30 px-4 py-3.5 sm:px-5"
+      className="rounded-lg border border-pine/40 bg-pine-tint px-4 py-3.5 sm:px-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>

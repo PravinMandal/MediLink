@@ -5,6 +5,7 @@ import { PageHeader, Card, CardHeader, EmptyState, Badge } from "@/components/ui
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { ProfileForm } from "@/components/patient-forms";
+import { ThemeSettings } from "@/components/theme-settings";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Profile", description: "Your demographics, emergency contact, and self-reported details." };
@@ -30,7 +31,6 @@ export default async function PatientProfile() {
               ["Date of birth", patient.dob ? formatDate(patient.dob) : "—"],
               ["Sex", patient.sex ?? "—"],
               ["Patient ID", patient.id],
-              ["City", patient.addressCity ?? "—"],
               ["Record created", formatDate(patient.createdAt)],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
@@ -56,6 +56,11 @@ export default async function PatientProfile() {
           />
         </Card>
       </div>
+
+      <Card className="mt-5">
+        <CardHeader eyebrow="Appearance" title="Themes" />
+        <ThemeSettings />
+      </Card>
     </>
   );
 }

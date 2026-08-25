@@ -30,6 +30,23 @@ export function formatTime(date: string | Date): string {
   });
 }
 
+/** Canonical patient-facing datetime: IST, explicitly labelled (§11.5). */
+export function formatIst(date: string | Date | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return String(date);
+  return (
+    d.toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "Asia/Kolkata",
+    }) + " IST"
+  );
+}
+
 export function timeAgo(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date;
   const s = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -50,6 +67,12 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((p) => p[0]!.toUpperCase())
     .join("");
+}
+
+/** Whole days from now until `date` (ceil; a grant expiring in 4h = 1 day). */
+export function daysUntil(date: string | Date): number {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return Math.ceil((d.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
 }
 
 export const TRUST_LABEL: Record<string, string> = {

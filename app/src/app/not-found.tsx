@@ -15,13 +15,13 @@ export default function NotFound() {
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/"
-            className="inline-flex h-11 items-center justify-center rounded-md border border-pine bg-pine px-5 text-[14.5px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-pine bg-pine px-5 text-[14.5px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep"
           >
             Back to the home page
           </Link>
           <Link
             href="/portal"
-            className="inline-flex h-11 items-center justify-center rounded-md border border-line-strong bg-paper-raised px-5 text-[14.5px] font-medium text-ink transition-colors hover:border-ink-faint"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-line-strong bg-paper-raised px-5 text-[14.5px] font-medium text-ink transition-colors hover:border-ink-faint"
           >
             Go to my portal
           </Link>

@@ -45,7 +45,7 @@ export function OrgUploadSection({
           id="org-upload-patient"
           value={patientId}
           onChange={(e) => setPatientId(e.target.value)}
-          className="mb-4 h-10 w-full rounded-md border border-line-strong bg-paper-raised px-2.5 text-sm text-ink focus:border-pine focus:outline-none"
+          className="mb-4 h-10 w-full rounded-lg border border-line-strong bg-paper-raised px-2.5 text-sm text-ink focus:border-pine focus:outline-none"
         >
           {patients.map((p) => (
             <option key={p.id} value={p.id}>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MediLink">
+  <defs>
+    <linearGradient id="mlg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6FA8FF"/>
+      <stop offset="0.55" stop-color="#2E6FE8"/>
+      <stop offset="1" stop-color="#12429E"/>
+    </linearGradient>
+    <clipPath id="mlc"><path d="M32 4 55 17v26L32 60 9 43V17Z"/></clipPath>
+    <linearGradient id="mls" x1="12" y1="8" x2="40" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 4 55 17v26L32 60 9 43V17Z" fill="url(#mlg)"/>
+  <g clip-path="url(#mlc)"><path d="M32 4 55 17v14L32 44 9 31V17Z" fill="url(#mls)"/></g>
+  <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M19 42V23l13 13"/><path d="M45 42V23L32 36"/>
+  </g>
+  <circle cx="32" cy="36" r="4.5" fill="#FFFFFF"/>
+  <circle cx="32" cy="36" r="7.75" stroke="#FFFFFF" stroke-width="2.5" fill="none" opacity="0.45"/>
+</svg>

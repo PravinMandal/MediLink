@@ -1,149 +1,627 @@
 @import "tailwindcss";
 
 /*
- * MediLink product design system — "clinical instrument".
+ * MediLink product design system — "sapphire vault".
  *
- * Grounded in the subject's world: lab report sheets, chart annotations,
- * medical seals. Cool clinical paper, deep pine ink, one reserved emergency
- * red. Data and citations are set in mono — the voice of the lab printout.
- * Calm, precise, trustworthy; decoration spent only on the citation chain.
+ * Deep sapphire blue on cool porcelain (Daylight) / midnight sapphire
+ * (Obsidian). Frosted glass is a first-class surface treatment: the shell,
+ * cards, and hover states use layered translucency with saturated ambient
+ * glows behind them — always with an opaque fallback (reduce-transparency,
+ * forced-colors, print). Data and citations stay in mono.
  *
- * Dark mode: "night ward" — the same instrument under night lighting.
- * Near-black pine-tinted surfaces (never pure black), one green accent,
- * ink steps inverted, tints become translucent overlays on the dark paper.
+ * Three-layer token system (BuildPlan §11.2):
+ *   1. Primitive tokens — fixed raw values, never used in components.
+ *   2. Semantic tokens — the only tokens components reference
+ *      (--surface-*, --text-*, --border-*, --action-*, --status-*).
+ *      Overridden per mode: Daylight (default), Obsidian (data-theme="dark"),
+ *      and Print (@media print). Reduce-transparency and forced-colors modes
+ *      additionally override the elevated surface.
+ *   3. Component tokens — per-component aliases that components (and the
+ *      legacy Tailwind color utilities below) consume.
+ *
+ * Modes (BuildPlan §7.2): Daylight (default), Obsidian (data-theme="dark"),
+ * Print. NOTE: token names containing "pine" are legacy aliases kept so the
+ * component layer keeps compiling — they resolve to BLUE values now.
+ *
+ * ---------------------------------------------------------------------------
+ * MEASURED CONTRAST RATIOS (WCAG 2.1; AA threshold 4.5:1 body text).
+ *
+ * Daylight:
+ *   text-primary #16202F / canvas #F5F7FB ........ 14.9:1
+ *   text-primary / data #FFFFFF ................... 15.9:1
+ *   text-secondary #45536B / data .................  7.6:1
+ *   text-tertiary #5A6B85 / data ..................  5.4:1
+ *   action-link #1549B8 / data ....................  7.1:1
+ *   status-warning #7A4F06 / data .................  7.1:1
+ *   status-danger #A32219 / data ..................  7.5:1
+ *   on-action-primary #FFFFFF / blue #1A56C4 ......  7.0:1
+ *
+ * Obsidian:
+ *   text-primary #EDF1F7 / canvas #090B10 ......... 17.8:1
+ *   text-primary / data #0E1118 ................... 16.9:1
+ *   text-secondary #B6C0CD / data ................. 10.2:1
+ *   text-tertiary #8F99A6 / data ..................  6.4:1
+ *   action-link #79B3FF / data ....................  8.6:1
+ *   status-warning #FFB95C / data ................. 11.2:1
+ *   status-danger #FF6B6B / data ..................  6.8:1
+ *   on-action-primary #FFFFFF / blue #1A56C4 ......  7.0:1
+ *   (dark fills use #6FA8FF with near-black ink: >9:1)
+ * ---------------------------------------------------------------------------
  */
 
-@theme {
-  --color-paper: #f7f8f6;
-  --color-paper-raised: #ffffff;
-  --color-paper-sunk: #eff1ee;
+/* ------------------------------------------------------------------------- */
+/* Layer 1 — Primitive tokens (raw values; components must never use these)  */
+/* ------------------------------------------------------------------------- */
+:root {
+  /* Light neutrals — cool porcelain with a faint azure cast */
+  --prim-paper-050: #f5f7fb;
+  --prim-paper-100: #ffffff;
+  --prim-paper-150: #eff2f8;
+  --prim-ink-900: #16202f;
+  --prim-ink-600: #45536b;
+  --prim-ink-500: #5a6b85;
+  --prim-line-200: #e3e8f0;
+  --prim-line-400: #c9d2e0;
 
-  --color-ink: #1b2420;
-  --color-ink-soft: #5a6660;
-  --color-ink-faint: #5f6b64;
+  /* Dark neutrals (Obsidian) — midnight sapphire */
+  --prim-night-canvas: #090b10;
+  --prim-night-data: #0e1118;
+  --prim-night-elevated: #141926;
+  --prim-night-sunk: #0a0d15;
+  --prim-night-text-100: #edf1f7;
+  --prim-night-text-300: #b6c0cd;
+  --prim-night-text-400: #8f99a6;
+  --prim-night-line-200: #222b3d;
+  --prim-night-line-400: #333f58;
 
-  --color-line: #e4e8e2;
-  --color-line-strong: #cbd2cc;
+  /* Brand + status hues — sapphire blue */
+  --prim-pine-700: #1a56c4;
+  --prim-pine-800: #12429e;
+  --prim-pine-tint-light: #e4edfc;
+  --prim-pine-ink-light: #0f3b8f;
+  --prim-pine-300: #6fa8ff;
+  --prim-pine-200: #96c2ff;
+  --prim-pine-tint-dark: #12233f;
+  --prim-pine-ink-dark: #a8c8ff;
+  --prim-alert-700: #b3261e;
+  --prim-alert-800: #8f1e18;
+  --prim-alert-tint-light: #fbeae9;
+  --prim-alert-300: #ff8a80;
+  --prim-alert-200: #ffb4ab;
+  --prim-alert-tint-dark: #3a1714;
+  --prim-amber-700: #7a4f06;
+  --prim-amber-tint-light: #fcf3e3;
+  --prim-amber-300: #ffca7a;
+  --prim-amber-tint-dark: #3a2a10;
+  --prim-info-700: #0e7490;
+  --prim-info-tint-light: #e3f4f8;
+  --prim-info-300: #67d3ec;
+  --prim-info-tint-dark: #0d2733;
 
-  --color-pine: #14594b;
-  --color-pine-deep: #0e4036;
-  --color-pine-tint: #e3efea;
-  --color-pine-ink: #0d3a30;
+  /* Semantic warning/danger text tones (contrast-tested per mode) */
+  --prim-warn-text-light: #7a4f06;
+  --prim-warn-text-dark: #ffb95c;
+  --prim-warn-text-print: #5c3a00;
+  --prim-danger-text-light: #a32219;
+  --prim-danger-text-dark: #ff6b6b;
+  --prim-danger-text-print: #8a1109;
+  --prim-link-light: #1549b8;
+  --prim-link-dark: #79b3ff;
+
+  /* Print */
+  --prim-print-ink: #111111;
+  --prim-print-ink-soft: #3d3d3d;
+  --prim-print-ink-faint: #4f4f4f;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Layer 2 — Semantic tokens (Daylight default; overridden per mode)          */
+/* ------------------------------------------------------------------------- */
+:root {
+  --surface-canvas: var(--prim-paper-050);
+  --surface-data: var(--prim-paper-100);
+  --surface-elevated: var(--prim-paper-100);
+  /* translucent tint used only by shell/transient layers; reduced-transparency
+     and Daylight keep it opaque */
+  --surface-elevated-alpha: 1;
+
+  --text-primary: var(--prim-ink-900);
+  --text-secondary: var(--prim-ink-600);
+  --text-tertiary: var(--prim-ink-500);
+
+  --border-subtle: var(--prim-line-200);
+  --border-strong: var(--prim-line-400);
+
+  --action-primary: var(--prim-pine-700);
+  --action-primary-hover: var(--prim-pine-800);
+  --action-on-primary: #ffffff;
+  --action-link: var(--prim-link-light);
+
+  --status-verified: var(--prim-pine-700);
+  --status-verified-tint: var(--prim-pine-tint-light);
+  --status-verified-ink: var(--prim-pine-ink-light);
+  --status-warning: var(--prim-warn-text-light);
+  --status-warning-tint: var(--prim-amber-tint-light);
+  --status-danger: var(--prim-danger-text-light);
+  --status-danger-tint: var(--prim-alert-tint-light);
+  --status-danger-strong: var(--prim-alert-700);
+  --status-danger-strong-hover: var(--prim-alert-800);
+  --status-danger-on: #ffffff;
+  --status-info: var(--prim-info-700);
+  --status-info-tint: var(--prim-info-tint-light);
+}
+
+/* Obsidian — dark brand environment. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-canvas: var(--prim-night-canvas);
+  --surface-data: var(--prim-night-data);
+  --surface-elevated: var(--prim-night-elevated);
+  /* restrained glass: shell nav and transient layers only */
+  --surface-elevated-alpha: 0.92;
+
+  --text-primary: var(--prim-night-text-100);
+  --text-secondary: var(--prim-night-text-300);
+  --text-tertiary: var(--prim-night-text-400);
+
+  --border-subtle: var(--prim-night-line-200);
+  --border-strong: var(--prim-night-line-400);
+
+  --action-primary: var(--prim-pine-300);
+  --action-primary-hover: var(--prim-pine-200);
+  --action-on-primary: #06231c;
+  --action-link: var(--prim-link-dark);
+
+  --status-verified: var(--prim-pine-200);
+  --status-verified-tint: var(--prim-pine-tint-dark);
+  --status-verified-ink: var(--prim-pine-ink-dark);
+  --status-warning: var(--prim-warn-text-dark);
+  --status-warning-tint: var(--prim-amber-tint-dark);
+  --status-danger: var(--prim-danger-text-dark);
+  --status-danger-tint: var(--prim-alert-tint-dark);
+  --status-danger-strong: var(--prim-alert-300);
+  --status-danger-strong-hover: var(--prim-alert-200);
+  --status-danger-on: #2a0503;
+  --status-info: var(--prim-info-300);
+  --status-info-tint: var(--prim-info-tint-dark);
+}
+
+html {
+  color-scheme: light;
+  /* Buttery smooth scrolling; reduced-motion override kills it below. */
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Reduce transparency — independent of theme (BuildPlan §7.2). User toggles  */
+/* data-transparency="reduced" on <html>; OS preference also honored.         */
+/* Elevated panels become solid; glass effects are removed.                   */
+/* ------------------------------------------------------------------------- */
+[data-transparency="reduced"] {
+  --surface-elevated-alpha: 1;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --surface-elevated-alpha: 1;
+  }
+}
+
+/* Forced-colors (Windows High Contrast): the browser palette wins; glass,
+   tints and shadows must not fight it. */
+@media (forced-colors: active) {
+  :root,
+  [data-theme="dark"] {
+    --surface-elevated-alpha: 1;
+    --status-warning-tint: Canvas;
+    --status-danger-tint: Canvas;
+    --status-verified-tint: Canvas;
+    --status-info-tint: Canvas;
+  }
+}
+
+/* Focus: always visible, pine ring */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--action-primary) 18%, transparent);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Layer 3 — Component tokens + legacy @theme alias utilities                */
+/* (Existing utility classes — bg-paper, text-ink, bg-pine, … — are retained */
+/* as aliases so components keep compiling; they now resolve to semantic     */
+/* tokens, never raw values.)                                                */
+/* ------------------------------------------------------------------------- */
+@theme inline {
+  --color-paper: var(--surface-canvas);
+  --color-paper-raised: var(--surface-data);
+  --color-paper-sunk: color-mix(in srgb, var(--surface-data) 96%, var(--text-primary));
+
+  --color-ink: var(--text-primary);
+  --color-ink-soft: var(--text-secondary);
+  --color-ink-faint: var(--text-tertiary);
+
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+
+  --color-pine: var(--action-primary);
+  --color-pine-deep: var(--action-primary-hover);
+  --color-pine-tint: var(--status-verified-tint);
+  --color-pine-ink: var(--status-verified-ink);
   /* Text/icons placed on solid pine fills (buttons, badges, tiles). */
-  --color-on-pine: #ffffff;
+  --color-on-pine: var(--action-on-primary);
   /* Sub-labels on pine fills (70% opacity variants break contrast). */
-  --color-on-pine-soft: #d7ebe4;
+  --color-on-pine-soft: var(--action-on-primary);
 
-  --color-alert: #b3261e;
-  --color-alert-deep: #8f1e18;
-  --color-alert-tint: #fbeae9;
-  --color-on-alert: #ffffff;
-  --color-on-alert-soft: #f3d9d6;
+  --color-alert: var(--status-danger);
+  --color-alert-deep: var(--status-danger-strong-hover);
+  --color-alert-tint: var(--status-danger-tint);
+  --color-on-alert: var(--status-danger-on);
+  --color-on-alert-soft: var(--status-danger-on);
 
-  --color-amber: #92610f;
-  --color-amber-tint: #fcf3e3;
+  --color-amber: var(--status-warning);
+  --color-amber-tint: var(--status-warning-tint);
 
-  --color-info: #1d5d8a;
-  --color-info-tint: #e8f1f7;
+  --color-info: var(--status-info);
+  --color-info-tint: var(--status-info-tint);
+
+  /* Explicit semantic surface utilities for new code */
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-data: var(--surface-data);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-action-link: var(--action-link);
 
   --font-display: var(--font-fraunces), Georgia, serif;
   --font-sans: var(--font-instrument), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
-/* Night ward — same tokens, night values. Applied by the pre-hydration
-   script (layout.tsx) or the toggle; overrides cascade over @theme. */
-[data-theme="dark"] {
-  --color-paper: #0c1310;
-  --color-paper-raised: #121b17;
-  --color-paper-sunk: #0a100d;
-
-  --color-ink: #e7ece9;
-  --color-ink-soft: #a3b0aa;
-  --color-ink-faint: #8d9c95;
-
-  --color-line: #24302b;
-  --color-line-strong: #35443d;
-
-  --color-pine: #4dbfa4;
-  --color-pine-deep: #79d3bd;
-  --color-pine-tint: #143528;
-  --color-pine-ink: #9fe3d0;
-  /* Dark pine is LIGHT — text on it must be dark. */
-  --color-on-pine: #06231c;
-  --color-on-pine-soft: #0a3529;
-
-  --color-alert: #ff8a80;
-  --color-alert-deep: #ffb4ab;
-  --color-alert-tint: #3a1714;
-  --color-on-alert: #2a0503;
-  --color-on-alert-soft: #40100c;
-
-  --color-amber: #ffca7a;
-  --color-amber-tint: #3a2a10;
-
-  --color-info: #7fc4e8;
-  --color-info-tint: #12293a;
+/* Component tokens — surfaces */
+:root {
+  --record-row-background: var(--surface-data);
+  --record-row-border: var(--border-subtle);
+  --evidence-chip-border: color-mix(in srgb, var(--status-verified) 35%, transparent);
+  --evidence-chip-background: var(--status-verified-tint);
+  --evidence-chip-text: var(--status-verified-ink);
+  --access-banner-background: var(--status-info-tint);
+  --access-banner-border: color-mix(in srgb, var(--status-info) 35%, transparent);
+  --access-banner-text: var(--status-info);
+  --shell-header-background: color-mix(in srgb, var(--surface-elevated) calc(var(--surface-elevated-alpha) * 100%), transparent);
+  --input-background: var(--surface-data);
+  --input-border: var(--border-strong);
 }
 
-html {
-  color-scheme: light;
+/* Tabular numerals wherever data lives */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-[data-theme="dark"] {
-  color-scheme: dark;
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
-body {
-  background-color: var(--color-paper);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+/* Eyebrows sitting on filled (non-paper) surfaces: the utility text-color
+   classes can't reliably override .eyebrow's own color at equal specificity,
+   so this variant sets it explicitly. */
+.eyebrow-on-fill {
+  color: inherit;
 }
 
-/* Focus: always visible, pine ring */
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-pine);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* Verified seal — the trust mark. Used sparingly. Text always states its
+   meaning; the pill never carries it alone. */
+.seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--status-verified);
+  border: 1px solid var(--status-verified);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
+  background: var(--status-verified-tint);
 }
 
-::selection {
-  background: var(--color-pine-tint);
-  color: var(--color-pine-ink);
+/* Utility classes for frosted surfaces that respect the transparency toggle.
+   Tailwind opacity-suffix utilities plus backdrop-blur bypass the token
+   system, so components that want glass should use these instead — they
+   collapse to opaque when data-transparency="reduced" (or the OS preference)
+   is set. */
+.frost {
+  background: color-mix(
+    in srgb,
+    var(--surface-data) calc(var(--surface-elevated-alpha) * 78%),
+    transparent
+  );
 }
 
-/* Print isolation: body.printing-card hides everything but the marked
-   .print-card element. Narrow artifacts (emergency card) center at 420px;
-   document-like ones (summary) print full width via .print-full.
-   Printing always uses the LIGHT palette — paper is paper. */
-@media print {
-  html[data-theme="dark"] {
-    --color-paper: #f7f8f6;
-    --color-paper-raised: #ffffff;
-    --color-paper-sunk: #eff1ee;
-    --color-ink: #1b2420;
-    --color-ink-soft: #5a6660;
-    --color-ink-faint: #5f6b64;
-    --color-line: #e4e8e2;
-    --color-line-strong: #cbd2cc;
-    --color-pine: #14594b;
-    --color-pine-deep: #0e4036;
-    --color-pine-tint: #e3efea;
-    --color-pine-ink: #0d3a30;
-    --color-on-pine: #ffffff;
-    --color-on-pine-soft: #d7ebe4;
-    --color-alert: #b3261e;
-    --color-alert-deep: #8f1e18;
-    --color-alert-tint: #fbeae9;
-    --color-on-alert: #ffffff;
-    --color-on-alert-soft: #f3d9d6;
-    --color-amber: #92610f;
-    --color-amber-tint: #fcf3e3;
-    --color-info: #1d5d8a;
-    --color-info-tint: #e8f1f7;
+@supports (backdrop-filter: blur(1px)) {
+  .frost {
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
   }
+}
+
+.frost-strong {
+  background: color-mix(
+    in srgb,
+    var(--surface-data) calc(var(--surface-elevated-alpha) * 88%),
+    transparent
+  );
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .frost-strong {
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+  }
+}
+
+[data-transparency="reduced"] .frost,
+html[data-transparency="reduced"] .frost,
+[data-transparency="reduced"] .frost-strong,
+html[data-transparency="reduced"] .frost-strong {
+  background: var(--surface-data);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .frost,
+  .frost-strong {
+    background: var(--surface-data);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .frost,
+  .frost-strong {
+    background: Canvas;
+    backdrop-filter: none;
+  }
+}
+
+/* Hairline card — frosted clinical data surface (§7.1). Translucent by
+   default with a saturated backdrop; resolves opaque under
+   reduce-transparency / forced-colors / print. */
+.card {
+  position: relative;
+  background: color-mix(
+    in srgb,
+    var(--surface-data) calc(var(--surface-elevated-alpha) * 88%),
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  border-radius: 16px;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .card {
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+  }
+}
+
+[data-transparency="reduced"] .card,
+html[data-transparency="reduced"] .card {
+  background: var(--surface-data);
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .card {
+    background: var(--surface-data);
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .card {
+    background: Canvas;
+    backdrop-filter: none;
+  }
+}
+
+/* Frosted hover lift for interactive surfaces (nav items, cards-as-links). */
+.glass-hover {
+  transition:
+    background-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-hover:hover {
+  background: color-mix(in srgb, var(--prim-pine-300) 12%, transparent);
+  border-color: color-mix(in srgb, var(--prim-pine-300) 45%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--prim-pine-300) 22%, transparent),
+    0 8px 28px -8px color-mix(in srgb, var(--prim-pine-700) 38%, transparent);
+}
+
+[data-theme="dark"] .glass-hover:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--prim-pine-300) 26%, transparent),
+    0 8px 32px -8px color-mix(in srgb, #000000 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-hover,
+  .glass-hover:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Ambient glow blobs — fixed decoration behind content (marketing + auth).
+   Purely decorative: pointer-events none, aria-hidden at call sites. */
+.glow-field {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glow-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.5;
+  animation: glow-drift 24s ease-in-out infinite alternate;
+}
+
+.glow-blob-blue {
+  background: radial-gradient(circle, var(--prim-pine-300) 0%, transparent 70%);
+}
+
+.glow-blob-deep {
+  background: radial-gradient(circle, var(--prim-pine-700) 0%, transparent 70%);
+  animation-delay: -12s;
+  opacity: 0.35;
+}
+
+@keyframes glow-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4rem, -3rem, 0) scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-blob {
+    animation: none;
+  }
+}
+
+/* Shell / transient-layer surface. Glass is allowed here only when the mode
+   permits (Obsidian, full transparency); reduce-transparency, forced-colors
+   and Daylight all resolve it to a solid color automatically because
+   --surface-elevated-alpha becomes 1 / base is opaque. */
+.glass-shell {
+  background: var(--shell-header-background);
+  border-color: var(--border-subtle);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .glass-shell {
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* Reduce transparency / forced-colors: no glass at all. */
+[data-transparency="reduced"] .glass-shell,
+html[data-transparency="reduced"] .glass-shell {
+  background: var(--surface-elevated);
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-shell {
+    background: var(--surface-elevated);
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .glass-shell {
+    background: Canvas;
+    backdrop-filter: none;
+  }
+}
+
+/* Motion discipline: only transform/opacity; respect reduced motion.
+   Duration/easing tokens (§11.4): 120ms standard, 180ms emphasized. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Print — paper-first, high-contrast exported artefacts (§7.2).             */
+/* ------------------------------------------------------------------------- */
+@media print {
+  :root,
+  [data-theme="dark"] {
+    color-scheme: light;
+    --surface-canvas: #ffffff;
+    --surface-data: #ffffff;
+    --surface-elevated: #ffffff;
+    --surface-elevated-alpha: 1;
+
+    --text-primary: var(--prim-print-ink);
+    --text-secondary: var(--prim-print-ink-soft);
+    --text-tertiary: var(--prim-print-ink-faint);
+
+    --border-subtle: #8a8a8a;
+    --border-strong: #5f5f5f;
+
+    --action-primary: #000000;
+    --action-primary-hover: #000000;
+    --action-on-primary: #ffffff;
+    --action-link: #000000;
+
+    --status-verified: #1a56c4;
+    --status-verified-tint: #ffffff;
+    --status-verified-ink: #1a56c4;
+    --status-warning: var(--prim-warn-text-print);
+    --status-warning-tint: #ffffff;
+    --status-danger: var(--prim-danger-text-print);
+    --status-danger-tint: #ffffff;
+    --status-danger-strong: #000000;
+    --status-danger-strong-hover: #000000;
+    --status-danger-on: #ffffff;
+    --status-info: #1a56c4;
+    --status-info-tint: #ffffff;
+  }
+
+  .glass-shell {
+    background: #ffffff;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
+  /* Print isolation: body.printing-card hides everything but the marked
+     .print-card element. Narrow artifacts (emergency card) center at 420px;
+     document-like ones (summary) print full width via .print-full. */
   body.printing-card * {
     visibility: hidden;
   }
@@ -165,65 +643,8 @@ body {
   }
 }
 
-/* Tabular numerals wherever data lives */
-.num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-ink-faint);
-}
-
-/* Eyebrows sitting on filled (non-paper) surfaces: the utility text-color
-   classes can't reliably override .eyebrow's own color at equal specificity,
-   so this variant sets it explicitly. */
-.eyebrow-on-fill {
-  color: inherit;
-}
-
-/* Verified seal — the trust mark. Used sparingly. */
-.seal {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-pine);
-  border: 1px solid var(--color-pine);
-  border-radius: 999px;
-  padding: 0.0625rem 0.5rem;
-  background: var(--color-pine-tint);
-}
-
-/* Hairline card */
-.card {
-  background: var(--color-paper-raised);
-  border: 1px solid var(--color-line);
-  border-radius: 10px;
-}
-
-/* Motion discipline: only transform/opacity; respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
 /* Scrollbars: subtle, only when needed */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-line-strong) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }

@@ -31,7 +31,7 @@ export function PrintEmergencyCard() {
           setPrinting(false);
         }
       }}
-      className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-pine bg-pine px-4 text-[13.5px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep disabled:opacity-60"
+      className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-pine bg-pine px-4 text-[13.5px] font-medium text-on-pine transition-colors hover:border-pine-deep hover:bg-pine-deep disabled:opacity-60"
     >
       {printing ? "Preparing…" : "🖨 Print / save card"}
     </button>

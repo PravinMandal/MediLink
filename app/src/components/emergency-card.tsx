@@ -316,7 +316,7 @@ export function EmergencyCard({ data }: { data: EmergencyCardData }) {
               )}
             </svg>
           ) : (
-            <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-line-strong text-center text-[9px] leading-tight text-ink-faint">
+            <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-dashed border-line-strong text-center text-[9px] leading-tight text-ink-faint">
               scan at
               <br />
               {data.emergencyUrl.replace(/^https?:\/\//, "")}

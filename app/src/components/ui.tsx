@@ -8,13 +8,13 @@ import type { ComponentProps, ReactNode } from "react";
 
 const buttonVariants = {
   primary:
-    "bg-pine text-on-pine border border-pine hover:bg-pine-deep hover:border-pine-deep disabled:opacity-50",
+    "bg-pine text-on-pine shadow-sm hover:bg-pine-deep hover:shadow",
   secondary:
-    "bg-paper-raised text-ink border border-line-strong hover:border-ink-faint hover:bg-paper-sunk disabled:opacity-50",
+    "bg-paper-raised text-ink border border-line-strong shadow-xs hover:border-pine/50 hover:bg-paper-sunk",
   ghost:
-    "bg-transparent text-ink-soft border border-transparent hover:text-ink hover:bg-paper-sunk disabled:opacity-50",
+    "bg-transparent text-ink-soft border border-transparent hover:text-ink hover:bg-line/30",
   danger:
-    "bg-alert text-on-alert border border-alert hover:bg-alert-deep hover:border-alert-deep disabled:opacity-50",
+    "bg-alert text-on-alert shadow-sm hover:bg-alert-deep hover:shadow",
 };
 
 const buttonSizes = {
@@ -29,7 +29,9 @@ export function buttonClass(
   className?: string,
 ) {
   return cn(
-    "inline-flex items-center justify-center rounded-md font-medium transition-colors duration-150 cursor-pointer select-none disabled:cursor-not-allowed",
+    "inline-flex items-center justify-center rounded-lg font-semibold tracking-tight transition-all duration-150 active:scale-[0.98]",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pine/60 focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
+    "disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
     buttonVariants[variant],
     buttonSizes[size],
     className,
@@ -74,7 +76,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "w-full h-10 rounded-md border border-line-strong bg-paper-raised px-3 text-sm text-ink placeholder:text-ink-faint",
+        "w-full h-10 rounded-lg border border-line-strong bg-paper-raised px-3 text-sm text-ink placeholder:text-ink-faint",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
         props["aria-invalid"] === true && errorControlClass,
         className,
@@ -91,7 +93,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "w-full rounded-md border border-line-strong bg-paper-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint",
+        "w-full rounded-lg border border-line-strong bg-paper-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
         props["aria-invalid"] === true && errorControlClass,
         className,
@@ -105,7 +107,7 @@ export function Select({ className, ...props }: ComponentProps<"select">) {
   return (
     <select
       className={cn(
-        "w-full h-10 rounded-md border border-line-strong bg-paper-raised px-2.5 text-sm text-ink",
+        "w-full h-10 rounded-lg border border-line-strong bg-paper-raised px-2.5 text-sm text-ink",
         "focus:border-pine focus:outline-none focus-visible:outline-2 focus-visible:outline-pine",
         props["aria-invalid"] === true && errorControlClass,
         className,
@@ -189,7 +191,11 @@ export function Card({
   className?: string;
   children: ReactNode;
 }) {
-  return <div className={cn("card", className)}>{children}</div>;
+  return (
+    <div className={cn("card overflow-hidden shadow-xs ring-1 ring-black/[0.02] dark:ring-white/[0.04]", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function CardHeader({
@@ -202,10 +208,10 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+    <div className="flex items-start justify-between gap-3 border-b border-line bg-linear-to-b from-transparent to-black/[0.015] dark:to-white/[0.02] px-4 py-3.5 sm:px-5">
       <div>
         {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
-        <h2 className="font-display text-[17px] font-semibold leading-tight text-ink">
+        <h2 className="font-display text-[18px] font-semibold leading-snug tracking-[-0.01em] text-ink">
           {title}
         </h2>
       </div>
@@ -253,9 +259,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong px-6 py-10 text-center">
-      <p className="text-sm font-medium text-ink">{title}</p>
-      {body ? <p className="max-w-sm text-[13px] text-ink-soft">{body}</p> : null}
+    <div className="card flex flex-col items-center justify-center gap-2.5 border-dashed px-6 py-14 text-center">
+      <span aria-hidden className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-paper-sunk text-base">✳</span>
+      <p className="text-[15px] font-semibold tracking-tight text-ink">{title}</p>
+      {body ? <p className="max-w-sm text-[13px] leading-relaxed text-ink-soft">{body}</p> : null}
       {action}
     </div>
   );
@@ -277,8 +284,8 @@ export function Alert({
     pine: "border-pine/30 bg-pine-tint text-pine-ink",
   };
   return (
-    <div className={cn("rounded-lg border px-4 py-3 text-[13px]", tones[tone])}>
-      {title ? <p className="mb-0.5 font-semibold">{title}</p> : null}
+    <div className={cn("rounded-xl border px-4 py-3.5 text-[13px] leading-relaxed shadow-xs", tones[tone])}>
+      {title ? <p className="mb-1 text-sm font-bold tracking-tight">{title}</p> : null}
       <div>{children}</div>
     </div>
   );
@@ -300,14 +307,14 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
-        <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+        {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
+        <h1 className="font-display text-[30px] font-bold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[34px]">
           {title}
         </h1>
         {description ? (
-          <p className="mt-1 max-w-2xl text-sm text-ink-soft">{description}</p>
+          <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-ink-soft">{description}</p>
         ) : null}
       </div>
       {action}

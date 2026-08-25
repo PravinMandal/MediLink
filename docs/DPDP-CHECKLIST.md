@@ -1,77 +1,42 @@
-# MediLink — DPDP & Compliance Checklist
+# MediLink — DPDP & Compliance Workstreams
 
-Status reference for the engineering controls that map to India's Digital
-Personal Data Protection Act, 2023 and the DPDP Rules, 2025 (notified
-13 Nov 2025; phased obligations through ~May 2027). **This is an engineering
-self-assessment, not legal advice. Production deployment requires legal review.**
+An owned governance programme for India's Digital Personal Data Protection
+Act, 2023 and the DPDP Rules, 2025 (notified 13 Nov 2025; phased obligations
+through ~May 2027), restructured per BuildPlan §10.3: "a continuously owned
+governance programme rather than a list of UI features."
 
-## Consent & notice
+**This is an engineering-organized workstream tracker, not legal advice.
+Production deployment requires legal review.** Owner roles are currently
+unassigned; each workstream needs a named accountable human before real
+patient data is processed (BuildPlan §15, §17).
 
-- [x] Consent is a first-class data object: grantee, category scopes, purpose,
-      expiry, revocation timestamp (`consents` table).
-- [x] Granular scopes (demographics / conditions / allergies / medications /
-      lab results / imaging / procedures / documents / sensitive) — data
-      minimization by scope selection.
-- [x] One-tap revocation, effective immediately at the access guard.
-- [x] Consent purpose recorded per grant (treatment / consultation / emergency
-      / record review).
-- [ ] Consent notice text reviewed by counsel (current UI copy is functional).
-- [ ] Consent artifact export (machine-readable) — future: align format with
-      ABDM consent-artifact structure.
+## Workstream register
 
-## Data principal rights
+| # | Workstream | Accountable owner role | Evidence required | Review date | Legal dependency |
+|---|---|---|---|---|---|
+| 1 | Consent & consent artefacts | Privacy engineering lead — unassigned | Working `access_requests` state machine; consent artefact export with policy version + verification code; counsel-approved notice copy and version history | — | Yes: consent notice wording, artefact format (align with ABDM consent-artefact structure), policy versioning |
+| 2 | Data principal rights (access, correction, erasure, grievance) | Product owner — unassigned | Correction/dispute flow with immutable versions; erasure/retention decision record per record class; published grievance channel with response SLA | — | Yes: retention vs erasure conflict for medical records; correction/grievance timelines under the Rules |
+| 3 | Security safeguards (technical) | Security owner — unassigned | Threat model for lookup/consent/document/emergency/AI/admin flows; MFA coverage for privileged roles; penetration test report with findings resolved or risk-accepted; rate-limit instrumentation | — | Partial: contractual security terms with processors |
+| 4 | Tamper evidence & audit integrity | Security owner — unassigned | Daily chain verification results; signed checkpoint manifests anchored externally; tamper-detection test evidence (BuildPlan §13.2) | — | Partial: evidentiary weight of audit logs if disputed |
+| 5 | Emergency (break-glass) policy | Clinical-safety lead — unassigned + Security owner — unassigned | Approved emergency data set, MFA/step-up policy, event duration, review SLA, notification fallback; tabletop exercise record | — | Yes: legal basis for emergency disclosure; notification obligations |
+| 6 | Data minimization & retention schedule | Privacy engineering lead — unassigned + Legal counsel — unassigned | Retention schedule per resource/document class signed by counsel; role-to-data access matrix; data inventory and flow diagrams | — | Yes: retention periods per record class and pilot partner agreements |
+| 7 | Encryption & key management | Security owner — unassigned | KMS/HSM selection ADR; envelope-encryption design for documents and sensitive fields; key rotation and key-loss response rehearsed | — | Partial: subprocessor security review |
+| 8 | Infrastructure, subprocessors & residency | Infrastructure owner — unassigned | Processor/subprocessor register with data-residency review; hosting region documented per environment; DPAs executed (Vercel, Supabase, AI provider); separate demo vs pilot accounts/credentials/datasets | — | Yes: data processing agreements, residency terms; current free-tier stack is a demo environment only, not a production plan (BuildPlan §10.5) |
+| 9 | Significant Data Fiduciary readiness | Legal counsel — unassigned + DPO — unassigned | SDF assessment once thresholds are approached; DPO appointment; DPIA cadence defined | — | Yes: SDF determination, DPO obligations, DPIA requirements under the Rules |
+| 10 | Breach & incident response | Security owner — unassigned | Incident playbook with owners and notification decision tree; rehearsed breach exercise meeting the 72-hour notification requirement; CERT-In reporting procedure | — | Yes: breach notification timelines; CERT-In Directions compliance |
+| 11 | Guardianship & caregiver authority | Product owner — unassigned + Legal counsel — unassigned | Child/guardian and caregiver authority policy; tested guardian flows | — | Yes: guardian consent rules, age thresholds |
+| 12 | Staff access governance | Trust-and-safety lead — unassigned | Staff confidentiality undertakings; access review and offboarding process; production-data access policy requiring just-in-time, case-bound approval | — | Partial: employment/contract terms |
+| 13 | ABDM interoperability (adjacent track) | Engineering lead — unassigned | Adapter seams (VerificationProvider, ABHA identifier table); sandbox V3 spike results (M1/M2/M3); NRCES/FHIR conformance mapping | — | Yes: ABDM onboarding credentials/terms before any production exchange |
+| 14 | Localisation & accessibility of notices | Product owner — unassigned | Consent notice copy in pilot languages; accessibility conformance (WCAG 2.2 AA) for all consent screens | — | Yes: required languages and literacy standards for the pilot population |
 
-- [x] Access transparency: patients see every read of their record
-      (Access history page, sourced from the audit log).
-- [x] Right to correct: self-reported fields editable; clinical corrections
-      flow through the amendment (supersede) mechanism — originals preserved
-      for integrity.
-- [ ] Right to erasure / grievance redressal workflows — not built; retention
-      policy for medical records conflicts with casual deletion, needs legal
-      framing (status: archived / superseded states exist as building blocks).
+## Standing rules
 
-## Security safeguards
-
-- [x] Access control: single enforcement point (access guard) on every
-      clinical read; RBAC + consent-scoped ABAC; platform admins denied
-      clinical reads by default.
-- [x] Tamper-evident audit: append-only hash-chained log with verification
-      (`verifyChain()`); tested tamper detection in the security suite.
-- [x] Break-glass emergency access: mandatory clinical reason, 60-minute
-      window, patient notification, admin review queue.
-- [x] File integrity: SHA-256 content hash on every uploaded document;
-      originals preserved byte-for-byte.
-- [x] Least-privilege reads: search and AI retrieval are patient-scoped in SQL
-      (cross-patient isolation covered by automated tests).
-- [x] Auth: hashed credentials (Better Auth), httpOnly session cookies,
-      7-day expiry with rolling refresh.
-- [ ] Encryption at rest beyond provider default (Supabase provides at-rest
-      encryption; field-level encryption for especially sensitive fields TBD).
-- [ ] Rate limiting + WAF at the edge (Vercel platform config) — pre-launch.
-- [ ] Penetration test — pre-launch.
-- [ ] Breach notification runbook (72-hour requirement under the Rules) —
-      draft needed.
-
-## Data minimization & retention
-
-- [x] No Aadhaar collected anywhere; ABHA stored only as a linked identifier
-      when the ABDM adapter is active (never a foreign key).
-- [x] Synthetic data only in development (seed script; enforced by policy).
-- [x] Document retention states (active / superseded) rather than hard deletes.
-- [ ] Retention schedule per record class with legal review.
-
-## Governance
-
-- [ ] Significant Data Fuciary assessment (health data likely qualifies) once
-      user base crosses thresholds — DPO appointment, DPIA cadence.
-- [ ] Data processing agreements with processors (Vercel, Supabase, Google
-      Gemini if enabled) — verify India data residency:
-      Vercel functions `bom1`, Supabase `ap-south-1` both in Mumbai.
-
-## ABDM interoperability (adjacent track)
-
-- [x] Adapter seams: `VerificationProvider` (HPR/HFR), ABHA identifier table,
-      consent artifact shape informed by ABDM patterns.
-- [ ] Sandbox V3 integration spike (M1 ABHA / M2 HIP / M3 HIU) — planned.
-- [ ] NRCES FHIR profile conformance for outbound bundles — `resource` JSONB
-      columns are pre-shaped for this.
+- Every workstream records its evidence artefacts in this repository or a
+  linked governance store; a checkbox without an artefact is not compliance.
+- Review dates are set when an owner is assigned; owners must review their
+  workstream at least quarterly and on any regulatory change (e.g., new DPDP
+  Rules phases through ~May 2027).
+- Engineering may prototype controls behind feature flags with synthetic
+  data, but must not silently invent production policy (BuildPlan §15).
+- Primary sources to re-validate at each review: MeitY (DPDP Act/Rules),
+  ABDM Health Data Management Policy, CERT-In directions — see BuildPlan §16.

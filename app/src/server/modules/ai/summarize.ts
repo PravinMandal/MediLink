@@ -202,7 +202,9 @@ async function buildDeterministic(
   if (!allergies.length) {
     claims.push({
       section: "situation",
-      text: "No allergies documented in any record.",
+      // §3 P0 / §11.5: absence of a record is NOT evidence that no allergy
+      // exists — never phrase it as a clinical negative.
+      text: "No allergy record found in MediLink.",
       sources: [],
     });
   }

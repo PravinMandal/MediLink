@@ -44,7 +44,7 @@ export function RecordSearchForm({ patientId }: { patientId: string }) {
   return (
     <form
       role="search"
-      className="flex items-center gap-2"
+      className="flex w-full max-w-xl items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         nav(q);
@@ -56,12 +56,12 @@ export function RecordSearchForm({ patientId }: { patientId: string }) {
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search records — e.g. creatinine, 2021"
-        className="w-44 rounded-md border border-line-strong bg-paper px-2.5 py-1.5 text-[12.5px] text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none sm:w-56"
+        placeholder="Search this record — e.g. creatinine, 2021"
+        className="h-10 w-full rounded-lg border border-line-strong bg-paper px-3.5 text-[13.5px] text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none"
       />
       <button
         type="submit"
-        className="cursor-pointer rounded-md border border-line-strong bg-paper-raised px-2.5 py-1.5 text-[12px] font-medium text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
+        className="glass-hover inline-flex h-10 shrink-0 items-center rounded-lg border border-line-strong bg-paper-raised px-4 text-[13px] font-medium text-ink"
       >
         {active ? "Search again" : "Search"}
       </button>
@@ -74,7 +74,7 @@ export function RecordSearchForm({ patientId }: { patientId: string }) {
             next.delete("q");
             router.replace(`/portal/doctor/patients/${patientId}?${next.toString()}`);
           }}
-          className="cursor-pointer text-[11px] text-ink-faint hover:text-ink underline"
+          className="cursor-pointer shrink-0 text-[12px] text-ink-faint hover:text-ink underline underline-offset-2"
         >
           Clear
         </button>

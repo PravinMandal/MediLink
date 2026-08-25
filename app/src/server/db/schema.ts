@@ -330,6 +330,9 @@ export const patients = pgTable(
     // have not signed up yet (created by organizations during care).
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     mrn: text("mrn"),
+    // Public MediLink Patient ID (random base32 + check char; see
+    // identity/patient-code.ts). Never derived from PII or key order.
+    patientCode: text("patient_code"),
     // India's national health ID (ABHA). Optional; displayed on the record
     // header when present. Linking/verification via ABDM is a future adapter.
     abhaNumber: text("abha_number"),
@@ -627,6 +630,9 @@ export const consents = pgTable(
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     purpose: consentPurposeEnum("purpose").notNull().default("treatment"),
     status: consentStatusEnum("status").notNull().default("active"),
+    accessRequestId: text("access_request_id"),
+    policyVersion: text("policy_version").notNull().default("v1"),
+    receiptCode: text("receipt_code"),
     grantedAt: timestamp("granted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -850,6 +856,480 @@ export const searchChunks = pgTable(
 );
 
 /* ------------------------------------------------------------------ */
+/* BuildPlan P0: access requests, consent artifacts, identity,          */
+/* versions, outbox, jobs, policy evaluations, checkpoints             */
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* BuildPlan P0 foundation tables                                     */
+/* ------------------------------------------------------------------ */
+
+export const accessRequestStatusEnum = pgEnum("access_request_status", [
+  "draft",
+  "submitted",
+  "patient_viewed",
+  "approved",
+  "declined",
+  "expired",
+  "cancelled",
+]);
+
+export const accessRequests = pgTable(
+  "access_requests",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    requesterUserId: text("requester_user_id")
+      .notNull()
+      .references(() => user.id),
+    requesterPractitionerId: text("requester_practitioner_id").references(
+      () => practitioners.id,
+    ),
+    requesterOrganizationId: text("requester_organization_id").references(
+      () => organizations.id,
+    ),
+    /** Snapshot of requester name/credential/org at submission time. */
+    requesterSnapshot: jsonb("requester_snapshot").$type<{
+      name: string;
+      credentialStatus: string;
+      organization?: string | null;
+      specialty?: string | null;
+    }>().notNull(),
+    purpose: text("purpose").notNull(),
+    purposeDetail: text("purpose_detail"),
+    visitReference: text("visit_reference"),
+    /** Requester-suggested minimum set — patient must still select scopes. */
+    suggestedScopes: jsonb("suggested_scopes").$type<string[]>().notNull().default([]),
+    dateWindowStart: text("date_window_start"),
+    dateWindowEnd: text("date_window_end"),
+    requestedDays: integer("requested_days").notNull(),
+    status: accessRequestStatusEnum("status").notNull().default("draft"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    patientViewedAt: timestamp("patient_viewed_at", { withTimezone: true }),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    patientResponseReason: text("patient_response_reason"),
+    policyVersion: text("policy_version").notNull().default("v1"),
+    displayCopyVersion: text("display_copy_version").notNull().default("v1"),
+    correlationId: text("correlation_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("access_request_patient_idx").on(t.patientId, t.status),
+    index("access_request_requester_idx").on(t.requesterUserId, t.status),
+  ],
+);
+
+export const consentArtifacts = pgTable(
+  "consent_artifacts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    consentId: text("consent_id")
+      .notNull()
+      .references(() => consents.id, { onDelete: "cascade" }),
+    accessRequestId: text("access_request_id").references(
+      () => accessRequests.id,
+    ),
+    artifact: jsonb("artifact").notNull(),
+    artifactSha256: text("artifact_sha256").notNull(),
+    policyVersion: text("policy_version").notNull().default("v1"),
+    receiptCode: text("receipt_code").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("consent_artifact_consent_idx").on(t.consentId)],
+);
+
+export const patientIdentityState = pgTable("patient_identity_state", {
+  patientId: text("patient_id")
+    .primaryKey()
+    .references(() => patients.id, { onDelete: "cascade" }),
+  state: text("state").notNull().default("provisional"),
+  cautionReason: text("caution_reason"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const identityClaims = pgTable(
+  "identity_claims",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    method: text("method").notNull(),
+    status: text("status").notNull().default("pending"),
+    reviewedBy: text("reviewed_by").references(() => user.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("identity_claim_patient_idx").on(t.patientId, t.status)],
+);
+
+export const identityMatches = pgTable("identity_matches", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  patientIdA: text("patient_id_a")
+    .notNull()
+    .references(() => patients.id, { onDelete: "cascade" }),
+  patientIdB: text("patient_id_b")
+    .notNull()
+    .references(() => patients.id, { onDelete: "cascade" }),
+  score: numeric("score").notNull(),
+  status: text("status").notNull().default("candidate"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const patientMergeCases = pgTable("patient_merge_cases", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  survivorPatientId: text("survivor_patient_id")
+    .notNull()
+    .references(() => patients.id),
+  mergedPatientId: text("merged_patient_id")
+    .notNull()
+    .references(() => patients.id),
+  identityMatchId: text("identity_match_id").references(
+    () => identityMatches.id,
+  ),
+  status: text("status").notNull().default("open"),
+  decidedBy: text("decided_by").references(() => user.id),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+});
+
+export const patientAliases = pgTable(
+  "patient_aliases",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    aliasPatientId: text("alias_patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    canonicalPatientId: text("canonical_patient_id")
+      .notNull()
+      .references(() => patients.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("patient_alias_alias_idx").on(t.aliasPatientId)],
+);
+
+/** Opaque, single-use, short-lived patient-present handoff tokens. */
+export const patientHandoffTokens = pgTable(
+  "patient_handoff_tokens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tokenHash: text("token_hash").notNull().unique(),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    code: text("code"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    usedByUserId: text("used_by_user_id").references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("handoff_expiry_idx").on(t.expiresAt)],
+);
+
+/**
+ * Opaque emergency-card tokens (BuildPlan §7.12): a printed card's QR must
+ * never encode a raw patient URL or reusable patient identifier — only this
+ * opaque token, which resolves server-side after clinician authentication.
+ * Tokens are rotatable (revoke + reissue) and never expire silently: they
+ * carry NO data and grant NO access by themselves; scanning only routes an
+ * authenticated doctor to the audited emergency path for that one patient.
+ */
+export const emergencyCardTokens = pgTable(
+  "emergency_card_tokens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    /** Raw token: it carries no data and grants no access — it only routes
+     *  an authenticated clinician to the audited emergency path. Stored so
+     *  the card can be re-rendered without rotating the printed URL. */
+    token: text("token").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    useCount: integer("use_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("emergency_card_patient_idx").on(t.patientId)],
+);
+
+
+export const clinicalResourceVersions = pgTable(
+  "clinical_resource_versions",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    resourceId: text("resource_id").notNull(),
+    resourceType: text("resource_type").notNull(),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    payload: jsonb("payload").notNull(),
+    payloadSha256: text("payload_sha256").notNull(),
+    lifecycleStatus: text("lifecycle_status").notNull().default("active"),
+    replacesVersionId: text("replaces_version_id"),
+    correctionReason: text("correction_reason"),
+    authoredById: text("authored_by_id").references(() => user.id),
+    organizationId: text("organization_id").references(() => organizations.id),
+    credentialSnapshot: jsonb("credential_snapshot"),
+    sourceDocumentId: text("source_document_id"),
+    pageRefs: jsonb("page_refs").$type<Array<{ page: number; region?: string }>>(),
+    reviewState: text("review_state").notNull().default("not_required"),
+    reviewedBy: text("reviewed_by").references(() => user.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    sealedAt: timestamp("sealed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("crv_resource_version_idx").on(t.resourceId, t.version),
+    index("crv_patient_idx").on(t.patientId, t.resourceType),
+  ],
+);
+
+export const attestations = pgTable("attestations", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  versionId: text("version_id")
+    .notNull()
+    .references(() => clinicalResourceVersions.id, { onDelete: "cascade" }),
+  attestedBy: text("attested_by")
+    .notNull()
+    .references(() => user.id),
+  attestationText: text("attestation_text").notNull(),
+  signatureType: text("signature_type").notNull().default("session_bound"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const dataDisputes = pgTable(
+  "data_disputes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => patients.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    raisedBy: text("raised_by")
+      .notNull()
+      .references(() => user.id),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("open"),
+    resolutionNotes: text("resolution_notes"),
+    resolvedBy: text("resolved_by").references(() => user.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("dispute_patient_idx").on(t.patientId, t.status)],
+);
+
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    seq: bigint("seq", { mode: "number" })
+      .generatedAlwaysAsIdentity()
+      .primaryKey(),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+  },
+  (t) => [
+    index("outbox_unprocessed_idx").on(t.processedAt),
+  ],
+);
+
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    jobType: text("job_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("pending"),
+    idempotencyKey: text("idempotency_key").unique(),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    result: jsonb("result"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("job_run_status_idx").on(t.status, t.jobType)],
+);
+
+export const idempotencyKeys = pgTable("idempotency_keys", {
+  key: text("key").primaryKey(),
+  scope: text("scope").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const extractionJobs = pgTable(
+  "extraction_jobs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("extraction_job_status_idx").on(t.status),
+    index("extraction_job_document_idx").on(t.documentId),
+  ],
+);
+
+export const documentScanState = pgTable("document_scan_state", {
+  documentId: text("document_id")
+    .primaryKey()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  scanStatus: text("scan_status").notNull().default("pending"),
+  scanner: text("scanner"),
+  scannedAt: timestamp("scanned_at", { withTimezone: true }),
+  detail: text("detail"),
+});
+
+export const accessPolicyEvaluations = pgTable(
+  "access_policy_evaluations",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    actorId: text("actor_id").references(() => user.id),
+    patientId: text("patient_id"),
+    action: text("action").notNull(),
+    scope: text("scope"),
+    decision: text("decision").notNull(),
+    accessBasisType: text("access_basis_type"),
+    accessBasisId: text("access_basis_id"),
+    allowedScopes: jsonb("allowed_scopes"),
+    reasonCode: text("reason_code").notNull(),
+    explanation: text("explanation"),
+    correlationId: text("correlation_id"),
+    policyVersion: text("policy_version").notNull().default("v1"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("policy_eval_actor_idx").on(t.actorId, t.createdAt)],
+);
+
+export const integrityCheckpoints = pgTable("integrity_checkpoints", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  lastSeq: bigint("last_seq", { mode: "number" }).notNull(),
+  eventCount: bigint("event_count", { mode: "number" }).notNull(),
+  manifestSha256: text("manifest_sha256").notNull(),
+  anchoredExternally: boolean("anchored_externally").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const emergencyReadEvents = pgTable(
+  "emergency_read_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    emergencyEventId: text("emergency_event_id")
+      .notNull()
+      .references(() => emergencyAccessEvents.id, { onDelete: "cascade" }),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => user.id),
+    action: text("action").notNull(),
+    resourceType: text("resource_type"),
+    resourceId: text("resource_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("emergency_read_event_idx").on(t.emergencyEventId)],
+);
+
+/* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -866,3 +1346,18 @@ export type ConflictRow = typeof conflicts.$inferSelect;
 export type EmergencyAccessEvent = typeof emergencyAccessEvents.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type SearchChunk = typeof searchChunks.$inferSelect;
+export type AccessRequest = typeof accessRequests.$inferSelect;
+export type ConsentArtifact = typeof consentArtifacts.$inferSelect;
+export type ClinicalResourceVersion = typeof clinicalResourceVersions.$inferSelect;
+export type Attestation = typeof attestations.$inferSelect;
+export type DataDispute = typeof dataDisputes.$inferSelect;
+export type OutboxEvent = typeof outboxEvents.$inferSelect;
+export type JobRun = typeof jobRuns.$inferSelect;
+export type ExtractionJob = typeof extractionJobs.$inferSelect;
+export type AccessPolicyEvaluation = typeof accessPolicyEvaluations.$inferSelect;
+export type IntegrityCheckpoint = typeof integrityCheckpoints.$inferSelect;
+export type EmergencyReadEvent = typeof emergencyReadEvents.$inferSelect;
+export type IdentityClaim = typeof identityClaims.$inferSelect;
+export type PatientMergeCase = typeof patientMergeCases.$inferSelect;
+export type PatientHandoffToken = typeof patientHandoffTokens.$inferSelect;
+export type PatientIdentityState = typeof patientIdentityState.$inferSelect;

@@ -36,6 +36,20 @@
       "when": 1787457000000,
       "tag": "0004_abha_number",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787628000000,
+      "tag": "0005_buildplan_p0_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787714400000,
+      "tag": "0006_emergency_card_tokens",
+      "breakpoints": true
     }
   ]
 }

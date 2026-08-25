@@ -18,11 +18,13 @@ function effectiveStatus(d: { extractionStatus: string; createdAt: Date }): stri
     return "failed";
   return d.extractionStatus;
 }
-import { PageHeader, Card, CardHeader, Badge, Alert } from "@/components/ui";
+import { PageHeader, Card, CardHeader, Badge, Alert, EmptyState } from "@/components/ui";
 import { db } from "@/server/db";
 import { documents, organizations, user as userTable } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
 import { OrgUploadSection } from "@/components/org-upload";
+import { VerificationQueue } from "@/components/lab-review";
+import { listReviewQueueAction } from "@/server/actions/lab-actions";
 import { consent } from "@/server/modules/consent/service";
 import { formatDate } from "@/lib/utils";
 
@@ -66,6 +68,13 @@ export default async function OrgConsole() {
 
   const verified = org.verificationStatus === "verified";
 
+  // §6.3: the work queue (verification) is the facility's primary landing
+  // content. No-op for non lab_staff/org_admin users (action returns []).
+  const reviewQueue =
+    user.role === "lab_staff" || user.role === "org_admin"
+      ? await listReviewQueueAction()
+      : [];
+
   return (
     <>
       <PageHeader
@@ -90,6 +99,20 @@ export default async function OrgConsole() {
         </div>
       ) : null}
 
+      {user.role === "lab_staff" || user.role === "org_admin" ? (
+        <div className="mb-5">
+          <VerificationQueue
+            items={reviewQueue.map((q) => ({
+              documentId: q.documentId,
+              patientName: q.patientName,
+              title: q.title,
+              recordedDate: q.recordedDate,
+              fieldCount: q.fieldCount,
+            }))}
+          />
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader eyebrow="People" title={`Staff (${staff.length})`} />
@@ -103,7 +126,11 @@ export default async function OrgConsole() {
                 </div>
               </li>
             ))}
-            {!staff.length ? <li className="px-5 py-4 text-sm text-ink-faint">No staff attached yet.</li> : null}
+            {!staff.length ? (
+              <li className="px-5 py-4">
+                <EmptyState title="No staff attached yet" body="Facility accounts appear here once the platform admin links them to this organisation." />
+              </li>
+            ) : null}
           </ul>
         </Card>
 
@@ -134,18 +161,22 @@ export default async function OrgConsole() {
               );
             })}
             {!recentDocs.length ? (
-              <li className="px-5 py-4 text-sm text-ink-faint">No uploads yet.</li>
+              <li className="px-5 py-4">
+                <EmptyState title="No uploads yet" body="Upload a patient's report from the upload panel above — originals are preserved unchanged." />
+              </li>
             ) : null}
           </ul>
         </Card>
 
-        <OrgUploadSection
-          patients={consentedPatients.map((p) => ({ id: p.id, fullName: p.fullName }))}
-        />
+        <div id="upload" className="scroll-mt-24">
+          <OrgUploadSection
+            patients={consentedPatients.map((p) => ({ id: p.id, fullName: p.fullName }))}
+          />
+        </div>
 
-        {consentedPatients.length ? (
-          <Card>
-            <CardHeader eyebrow="Consent registry" title={`Patients granting this facility document consent (${consentedPatients.length})`} />
+        <Card>
+          <CardHeader eyebrow="Consent registry" title={`Patients granting this facility document consent (${consentedPatients.length})`} />
+          {consentedPatients.length ? (
             <ul className="divide-y divide-line">
               {consentedPatients.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-5">
@@ -156,8 +187,15 @@ export default async function OrgConsole() {
                 </li>
               ))}
             </ul>
-          </Card>
-        ) : null}
+          ) : (
+            <div className="p-5">
+              <EmptyState
+                title="No document-consented patients yet"
+                body="Patients appear here after they grant this facility the Source documents scope — that consent is what permits uploads."
+              />
+            </div>
+          )}
+        </Card>
       </div>
     </>
   );

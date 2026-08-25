@@ -8,6 +8,8 @@ import { records } from "@/server/modules/records/service";
 import { EmergencyProfileForm } from "@/components/patient-forms";
 import { EmergencyCard } from "@/components/emergency-card";
 import { PrintEmergencyCard } from "@/components/print-card-button";
+import { RotateCardButton } from "@/components/rotate-card-button";
+import { emergencyCard } from "@/server/modules/identity/emergency-card";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Emergency profile", description: "Critical information available to doctors via audited emergency access." };
@@ -17,12 +19,16 @@ export default async function EmergencyProfile() {
   const patient = await patientService.forUser(user.id);
   if (!patient) return <EmptyState title="No patient record linked to this account." />;
 
-  const [bloodGroup, allergies, meds, conds] = await Promise.all([
+  const [bloodGroup, allergies, meds, conds, card] = await Promise.all([
     records.bloodGroup(patient.id),
     records.currentAllergies(patient.id),
     records.currentMedications(patient.id),
     records.currentConditions(patient.id),
+    // Issue-or-rotate is idempotent per render; rotation revokes any earlier
+    // printed card so a lost one stops resolving the moment this renders.
+    emergencyCard.issue(user.id, patient.id),
   ]);
+  const cardToken = card.token;
 
   return (
     <>
@@ -58,15 +64,18 @@ export default async function EmergencyProfile() {
                   .map((c) => ({ name: c.name, onsetDate: c.onsetDate })),
                 ecName: patient.emergencyContactName,
                 ecPhone: patient.emergencyContactPhone,
-                // Scanned by a treating doctor: the middleware bounces an
-                // unauthenticated visit to sign-in with `next` set, so the
-                // doctor lands straight on the record page, whose access
-                // check enforces consent and offers audited break-glass.
-                emergencyUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/doctor/patients/${patient.id}`,
+                // §7.12: the QR encodes an opaque, rotatable token — never a
+                // raw patient URL or reusable identifier. Scanning routes an
+                // authenticated clinician to /e/<token>, which resolves the
+                // patient server-side and lands on the audited record page;
+                // the access check there still enforces consent/break-glass.
+                emergencyUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/e/${cardToken}`,
               }}
             />
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <PrintEmergencyCard />
+              <span className="mx-1 h-5 w-px bg-line" aria-hidden />
+              <RotateCardButton />
               <p className="text-[11px] text-ink-faint">
                 Wallet-size. The QR routes a treating doctor through the audited
                 emergency path — never a silent copy.

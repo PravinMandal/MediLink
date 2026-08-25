@@ -15,7 +15,7 @@ export function RouteSkeleton() {
       <Card className="p-5">
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-10 animate-pulse rounded-md bg-paper-sunk" />
+            <div key={i} className="h-10 animate-pulse rounded-lg bg-paper-sunk" />
           ))}
         </div>
       </Card>
@@ -61,7 +61,7 @@ export function RouteError({
         <button
           type="button"
           onClick={reset}
-          className="mt-1 cursor-pointer rounded-md border border-pine bg-pine px-4 py-2 text-sm font-medium text-on-pine transition-colors hover:bg-pine-deep"
+          className="mt-1 cursor-pointer rounded-lg border border-pine bg-pine px-4 py-2 text-sm font-medium text-on-pine transition-colors hover:bg-pine-deep"
         >
           Try again
         </button>

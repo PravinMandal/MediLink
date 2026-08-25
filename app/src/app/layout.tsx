@@ -47,7 +47,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#14594b",
+  themeColor: "#1a56c4",
 };
 
 export default function RootLayout({
@@ -60,7 +60,7 @@ export default function RootLayout({
             dark mode never flashes. Must stay inline and blocking. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();`,
+            __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";var t=localStorage.getItem("medilink-transparency");if(t==="reduced")document.documentElement.dataset.transparency="reduced";}catch(e){document.documentElement.dataset.theme="light";}})();`,
           }}
         />
       </head>

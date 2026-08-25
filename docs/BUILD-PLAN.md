@@ -1,5 +1,13 @@
 # MediLink — Approved Build Plan & Roadmap
 
+> **Supersession notice (August 2026):** the root [`BuildPlan.md`](../BuildPlan.md)
+> (August 2026 revision, produced after product, security, architecture, and UX
+> review) is the **proposed successor plan, pending owner approval**. Where the
+> two documents disagree, the root `BuildPlan.md` reflects the newer decisions.
+> This plan is retained as the historical baseline and is **not** deleted until
+> the applicable owners (clinical-safety lead, security owner, product owner)
+> formally approve the successor and sign the transition.
+
 > This is the single source of truth for what we are building. Progress is tracked in the session todo list.
 > Research basis: `docs/research-findings.md` · Design basis: `docs/design-principles.md`
 

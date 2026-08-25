@@ -161,7 +161,7 @@ export function RecordJourneySection() {
       <div ref={trackRef} className="relative h-[420vh]">
         {/* Sticky stage */}
         <div className="sticky top-0 flex h-screen flex-col overflow-hidden">
-          <div className="relative mx-auto w-full max-w-6xl flex-1 px-5 pt-10 sm:px-8">
+          <div className="relative mx-auto w-full max-w-7xl flex-1 px-5 pt-10 sm:px-8">
             <p className="eyebrow">The record journey</p>
             <h2 className="mt-2 max-w-2xl font-display text-[clamp(1.7rem,3.6vw,2.4rem)] font-semibold leading-tight tracking-[-0.01em] text-ink">
               One lab report, followed through the chain.
@@ -189,15 +189,15 @@ export function RecordJourneySection() {
           </div>
 
           {/* Step copy rail — real content, legible without the canvas */}
-          <div className="relative mx-auto w-full max-w-6xl px-5 pb-6 sm:px-8">
+          <div className="relative mx-auto w-full max-w-7xl px-5 pb-6 sm:px-8">
             <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
               {STEPS.map(([title, body], i) => {
                 const active = i === activeStep;
                 return (
-                <li key={title} className="min-w-0 transition-opacity duration-300" aria-current={active ? "step" : undefined}>
+                <li key={title} className="min-w-0 rounded-xl border px-4 py-3.5 transition-all duration-300" aria-current={active ? "step" : undefined} style={active ? { borderColor: "color-mix(in srgb, var(--action-primary) 35%, transparent)", background: "var(--status-verified-tint)" } : undefined}>
                   <span
                     className={
-                      "num text-[12px] font-semibold transition-colors " +
+                      "num text-[12px] font-bold tracking-wide transition-colors " +
                       (active ? "text-pine" : "text-ink-faint")
                     }
                   >
@@ -205,13 +205,13 @@ export function RecordJourneySection() {
                   </span>
                   <h3
                     className={
-                      "mt-1 font-display text-[15.5px] font-semibold leading-snug transition-colors sm:text-[17px] " +
+                      "mt-1 font-display text-[16px] font-bold leading-snug tracking-[-0.01em] transition-colors sm:text-[17px] " +
                       (active ? "text-ink" : "text-ink-soft")
                     }
                   >
                     {title}
                   </h3>
-                  <p className="mt-1 hidden max-w-xs text-[12.5px] leading-relaxed text-ink-soft sm:block">
+                  <p className="mt-1.5 hidden max-w-xs text-[13px] leading-relaxed text-ink-soft sm:block">
                     {body}
                   </p>
                 </li>
@@ -232,18 +232,18 @@ export function RecordJourneySection() {
       {/* Reduced-motion fallback: the four steps as a static numbered list,
           using the page's existing sequence styling. */}
       {reduced && (
-        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
+        <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8">
           <ol className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map(([title, body], i) => (
               <li key={title} className="bg-paper-raised">
-                <div className="flex h-full flex-col p-6">
-                  <span className="num text-[13px] font-semibold text-pine">
+                <div className="flex h-full flex-col bg-paper-raised p-6">
+                  <span className="num inline-flex h-9 w-9 items-center justify-center rounded-lg bg-pine-tint text-sm font-bold text-pine-ink">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <h3 className="mt-3 font-display text-[19px] font-semibold text-ink">
+                  <h3 className="mt-4 font-display text-[20px] font-bold tracking-[-0.01em] text-ink">
                     {title}
                   </h3>
-                  <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
+                  <p className="mt-2.5 text-[14px] leading-relaxed text-ink-soft">
                     {body}
                   </p>
                 </div>

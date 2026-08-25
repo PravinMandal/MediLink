@@ -39,7 +39,7 @@ export function PrintCardButton({
       }}
       className={
         className ??
-        "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-line-strong bg-paper-raised px-3 text-xs font-medium text-ink transition-colors hover:border-ink-faint disabled:opacity-60"
+        "inline-flex h-9 cursor-pointer items-center justify-center rounded-lg border border-line-strong bg-paper-raised px-3 text-xs font-medium text-ink transition-colors hover:border-ink-faint disabled:opacity-60"
       }
     >
       {printing ? "Preparing…" : label}

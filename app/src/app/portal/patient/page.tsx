@@ -8,6 +8,13 @@ import { records } from "@/server/modules/records/service";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { summarizer } from "@/server/modules/ai/summarize";
 import { PrintCardButton } from "@/components/print-button";
+import { HandoffCard } from "@/components/handoff-card";
+import {
+  EvidenceSummaryShell,
+  EvidenceGroup,
+  EvidenceClaim,
+} from "@/components/evidence-summary";
+import { accessRequestsService } from "@/server/modules/consent/access-requests";
 import { notify } from "@/server/modules/notifications/service";
 import { audit } from "@/server/modules/audit/service";
 import { formatDate, formatTime, TRUST_LABEL, formatAuditAction } from "@/lib/utils";
@@ -34,7 +41,7 @@ export default async function PatientDashboard() {
     );
   }
 
-  const [conds, allergies, meds, docs, bloodGroup, conflicts, notifications, accessLog, summary] =
+  const [conds, allergies, meds, docs, bloodGroup, conflicts, notifications, accessLog, summary, pendingRequests] =
     await Promise.all([
       records.currentConditions(patient.id),
       records.currentAllergies(patient.id),
@@ -46,9 +53,21 @@ export default async function PatientDashboard() {
       audit.forPatient(patient.id, 6),
       // Self-access: the patient reads their own summary ungated.
       summarizer.latestFor(patient.id, null),
+      // §7.6 attention strip: decisions waiting for the patient surface on
+      // Home, not just in the Access centre.
+      accessRequestsService.pendingForPatient(patient.id).catch(() => []),
     ]);
 
   const criticalConflicts = conflicts.filter((c) => c.severity === "critical");
+
+  // Coverage note (§7.6 "Your record today"): concrete freshness language
+  // instead of implying completeness. Uses the newest document + encounter.
+  const lastDocDate = docs[0]
+    ? (docs[0].recordedDate ? new Date(docs[0].recordedDate) : docs[0].createdAt)
+    : null;
+  const coverageLine = lastDocDate
+    ? `Newest document on file: ${formatDate(lastDocDate)}. MediLink may not contain your complete history.`
+    : "No documents on file yet. MediLink may not contain your complete history.";
 
   return (
     <>
@@ -57,6 +76,21 @@ export default async function PatientDashboard() {
         title={`Hello, ${patient.fullName.split(" ")[0]}`}
         description="Your lifetime health record — every fact carries its source."
       />
+
+      {/* §7.6 Attention strip — only when action is required. */}
+      {pendingRequests.length ? (
+        <div className="mb-5">
+          <Alert tone="amber" title={`${pendingRequests.length} access request${pendingRequests.length > 1 ? "s" : ""} waiting for your decision`}>
+            <span>
+              A clinician has asked to see part of your record. Nothing is
+              shared until you decide.
+            </span>{" "}
+            <ButtonLink href="/portal/patient/consents" variant="secondary" size="sm" className="mt-2">
+              Review {pendingRequests.length > 1 ? "requests" : "request"}
+            </ButtonLink>
+          </Alert>
+        </div>
+      ) : null}
 
       {criticalConflicts.length ? (
         <div className="mb-5">
@@ -84,7 +118,7 @@ export default async function PatientDashboard() {
             eyebrow="At a glance"
             title="Your health snapshot"
             action={
-              <ButtonLink href="/portal/patient/timeline" variant="secondary" size="sm">
+              <ButtonLink href="/portal/patient/record" variant="secondary" size="sm">
                 Full timeline
               </ButtonLink>
             }
@@ -103,62 +137,73 @@ export default async function PatientDashboard() {
               </div>
             ))}
           </dl>
+          {/* §7.6 coverage note: no false completeness, concrete freshness. */}
+          <p className="border-t border-line bg-paper-sunk px-4 py-2.5 text-[12px] text-ink-soft sm:px-5">
+            {coverageLine}
+          </p>
         </Card>
 
-        {/* Own SBAR summary — every claim cited, readable by the patient */}
+        {/* Own evidence summary — plain language, every claim cited on the doctor's view */}
         <Card className="print-card print-full md:col-span-2">
-          <CardHeader
-            eyebrow="AI-generated summary"
-            title="Your SBAR summary"
-            action={
-              summary ? (
+          {summary ? (
+            <EvidenceSummaryShell
+              meta={`generated ${formatDate(summary.summary.createdAt)}`}
+              action={
                 <div className="flex items-center gap-2 print:hidden">
                   <Badge tone={summary.summary.mode === "llm" ? "info" : "neutral"}>
                     {summary.summary.mode === "llm" ? `LLM · ${summary.summary.model}` : "deterministic"}
                   </Badge>
-                  <PrintCardButton label="🖨 Print summary" />
+                  <PrintCardButton label="Print summary" />
                 </div>
-              ) : undefined
-            }
-          />
-          {summary ? (
-            <div className="space-y-4 px-4 py-4 sm:px-5">
+              }
+            >
               {(
                 [
-                  ["situation", "Situation"],
-                  ["background", "Background"],
-                  ["assessment", "Assessment"],
-                  ["plan", "Plan"],
+                  // §7.13 recorded-fact headings (patient-facing plain language).
+                  ["situation", "Key facts"],
+                  ["background", "Relevant history"],
+                  ["assessment", "Recent changes"],
+                  ["plan", "Recorded follow-up & medicines"],
                 ] as const
               ).map(([section, label]) => {
                 const claims = summary.claims.filter((c) => c.section === section);
                 if (!claims.length) return null;
                 return (
-                  <section key={section}>
-                    <p className="eyebrow mb-1.5">{label}</p>
-                    <ul className="space-y-1.5">
-                      {claims.slice(0, 4).map((c) => (
-                        <li key={c.id} className="text-[13.5px] leading-relaxed text-ink">
-                          {c.text}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
+                  <EvidenceGroup key={section} label={label}>
+                    {claims.slice(0, 4).map((c) => (
+                      <EvidenceClaim
+                        key={c.id}
+                        text={c.text}
+                        tone={c.text.startsWith("⚠") ? "alert" : undefined}
+                      />
+                    ))}
+                  </EvidenceGroup>
                 );
               })}
-              <p className="border-t border-line pt-3 text-[11px] text-ink-faint">
-                AI-generated — every claim on your doctor&apos;s view links to its source record.
-                Generated {formatDate(summary.summary.createdAt)}.
-              </p>
-            </div>
+            </EvidenceSummaryShell>
           ) : (
-            <div className="px-4 py-4 sm:px-5">
-              <EmptyState
-                title="No summary yet"
-                body="Ask your doctor to generate one at your next visit — every claim will carry citations."
+            <>
+              <CardHeader
+                eyebrow="Evidence summary"
+                title="Your record, in plain language"
               />
-            </div>
+              <div className="px-4 py-4 sm:px-5">
+                <EmptyState
+                  title="No summary yet"
+                  body="Ask your doctor to generate one at your next visit — every claim will carry citations."
+                />
+              </div>
+            </>
           )}
+        </Card>
+
+        {/* Patient-present handoff (§8.2) */}
+        <Card>
+          <CardHeader
+            eyebrow="Patient ID handoff"
+            title="Share with a clinician now"
+          />
+          <HandoffCard />
         </Card>
 
         {/* Conditions */}

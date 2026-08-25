@@ -108,12 +108,30 @@ export const consent = {
       .select()
       .from(consents)
       .where(eq(consents.id, consentId));
+    // Ownership is mandatory (§7.8): the caller's patient record must own
+    // this grant. A mismatched or missing consent is a uniform failure —
+    // no existence oracle for other patients' grants.
     if (!row) throw new Error("Consent not found");
+    const { patients } = await import("@/server/db/schema");
+    const [owner] = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.id, row.patientId), eq(patients.userId, patientUserId)));
+    if (!owner) throw new Error("ACCESS_DENIED");
 
-    await db
+    const [updated] = await db
       .update(consents)
       .set({ status: "revoked", revokedAt: new Date() })
-      .where(eq(consents.id, consentId));
+      .where(
+        and(
+          eq(consents.id, consentId),
+          // Re-check inside the UPDATE so a concurrent re-grant/re-target can
+          // never be revoked by a stale read (defense in depth).
+          eq(consents.patientId, owner.id),
+        ),
+      )
+      .returning();
+    if (!updated) throw new Error("Consent not found");
 
     await audit.record({
       actorId: patientUserId,

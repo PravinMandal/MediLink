@@ -77,7 +77,7 @@ export function NotificationBell({
         aria-haspopup="dialog"
         aria-label={`Notifications${state.unread ? `, ${state.unread} unread` : ""}`}
         onClick={openPanel}
-        className="relative cursor-pointer rounded-md border border-line-strong bg-paper-raised p-1.5 text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
+        className="relative cursor-pointer rounded-lg border border-line-strong bg-paper-raised p-1.5 text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
       >
         {/* Bell icon (lucide path, inlined to keep this leaf small) */}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -125,13 +125,13 @@ export function NotificationBell({
                     <>
                       <p className="text-[12.5px] font-medium text-ink">{n.title}</p>
                       {n.body ? <p className="mt-0.5 text-[11.5px] text-ink-soft">{n.body}</p> : null}
-                      <p className="mt-0.5 text-[10px] text-ink-faint">
+                      <p className="mt-0.5 text-[11.5px] text-ink-faint">
                         <span title={n.timeISO}>{n.createdAt}</span>
                       </p>
                     </>
                   );
                   return (
-                    <li key={n.id} className={cn(!n.readAt && "bg-pine-tint/40")}>
+                    <li key={n.id} className={cn(!n.readAt && "bg-pine-tint")}>
                       {n.link ? (
                         <Link
                           href={n.link}

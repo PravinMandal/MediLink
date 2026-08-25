@@ -1,10 +1,11 @@
 /**
  * Patient module — the longitudinal record owner.
  */
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { patients } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
+import { generatePatientCode } from "@/server/modules/identity/patient-code";
 
 export const patientService = {
   async create(input: {
@@ -21,7 +22,15 @@ export const patientService = {
     createdById: string;
     organizationId?: string | null;
   }) {
-    const [row] = await db.insert(patients).values(input).returning();
+    const [row] = await db
+      .insert(patients)
+      .values({
+        ...input,
+        // Non-enumerable public identifier (BuildPlan §8.1), assigned at
+        // creation; never derived from demographics.
+        patientCode: generatePatientCode(),
+      })
+      .returning();
     await audit.record({
       actorId: input.createdById,
       action: "patient.created",
@@ -45,39 +54,9 @@ export const patientService = {
     return row ?? null;
   },
 
-  /**
-   * Consent-aware search used by doctors: matches name or phone, and returns
-   * an access indicator so the UI can show "has access / request access".
-   *
-   * Kept as substring ilike ('%term%') rather than prefix-only: doctors often
-   * search by partial name/phone fragments. The 0001_patient_search_trgm
-   * migration adds pg_trgm GIN indexes on full_name and phone so the
-   * substring match is index-backed on Supabase (pg_trgm is available on the
-   * free tier) and on PGlite.
-   */
-  async search(query: string, limit = 20) {
-    const trimmed = query.trim();
-    // DPDP-aligned default (stakeholder Q5): directory probing is minimized —
-    // single/double-character queries are rejected so wildcards can't walk
-    // the registry. DOB/phone remain searchable by design (doctors search by
-    // phone fragments), but only a 3+ char committed query gets results.
-    if (trimmed.length < 3) return [];
-    const q = `%${trimmed}%`;
-    return db
-      .select({
-        id: patients.id,
-        fullName: patients.fullName,
-        dob: patients.dob,
-        sex: patients.sex,
-        phone: patients.phone,
-        addressCity: patients.addressCity,
-        createdAt: patients.createdAt,
-      })
-      .from(patients)
-      .where(or(ilike(patients.fullName, q), ilike(patients.phone, q)))
-      .orderBy(desc(patients.createdAt))
-      .limit(limit);
-  },
+  // NOTE: the former name/phone directory search was REMOVED per BuildPlan
+  // §14-B4: doctor discovery is ID/verified-ABHA-only via
+  // identity/discovery.ts, which discloses nothing before authorization.
 
   async updateSelf(
     userId: string,

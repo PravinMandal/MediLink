@@ -24,7 +24,7 @@ export default async function SignInPage({
         <Link href="/" className="mb-8 flex items-center gap-2.5">
           <span
             aria-hidden
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-pine font-display text-[15px] font-bold text-on-pine"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-pine font-display text-[15px] font-bold text-on-pine"
           >
             M
           </span>
@@ -36,7 +36,7 @@ export default async function SignInPage({
           Welcome back
         </h1>
         {registered ? (
-          <p className="mb-2 mt-2 rounded-md border border-pine/40 bg-pine-tint px-3 py-2 text-[13px] text-pine-ink" role="status">
+          <p className="mb-2 mt-2 rounded-lg border border-pine/40 bg-pine-tint px-3 py-2 text-[13px] text-pine-ink" role="status">
             Account created — sign in below.
           </p>
         ) : null}

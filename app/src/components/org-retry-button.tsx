@@ -20,7 +20,7 @@ export function OrgRetryButton({
       <input type="hidden" name="documentId" value={documentId} />
       <SubmitButton
         pendingLabel="Retrying…"
-        className="cursor-pointer rounded-md border border-amber/60 bg-amber/10 px-2.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-amber"
+        className="cursor-pointer rounded-lg border border-amber/60 bg-amber/10 px-2.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-amber"
       >
         Retry
       </SubmitButton>

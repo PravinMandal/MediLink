@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   PageHeader,
@@ -14,7 +15,6 @@ import {
   Alert,
   EmptyState,
 } from "@/components/ui";
-import { ClaimLine } from "@/components/interactive";
 import { SectionTabs } from "@/components/section-tabs";
 import {
   GenerateSummaryForm,
@@ -25,6 +25,14 @@ import {
 } from "@/components/doctor-forms";
 import { RecordSearchForm } from "@/components/record-search";
 import { RetryExtractionButton } from "@/components/retry-extraction";
+import { ClinicalList } from "@/components/clinical-rows";
+import { provenance } from "@/server/modules/records/provenance";
+import {
+  EvidenceSummaryShell,
+  EvidenceGroup,
+  EvidenceClaim,
+} from "@/components/evidence-summary";
+import { CitationChipsInline } from "@/components/citation-chips-inline";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { access, EMERGENCY_SCOPES, scopeForResource } from "@/server/modules/access/guard";
@@ -34,83 +42,13 @@ import { summarizer } from "@/server/modules/ai/summarize";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
-import { formatDate, cn, ageFrom, TRUST_LABEL } from "@/lib/utils";
-import type { ConsentScope } from "@/server/modules/consent/service";
+import { consent, SCOPE_LABELS, type ConsentScope } from "@/server/modules/consent/service";
+import { formatDate, ageFrom, TRUST_LABEL } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Patient record",
   description: "Consent-scoped patient record: summary, timeline, lab trends, and source documents.",
 };
-
-/* ---------------- Sparkline (deterministic SVG) ---------------- */
-
-function Sparkline({
-  points,
-  unit,
-  flag,
-}: {
-  points: Array<{ value: number; date: string | null }>;
-  unit: string | null;
-  flag: string;
-}) {
-  const W = 120;
-  const H = 32;
-  if (points.length < 2) return <span className="text-xs text-ink-faint">—</span>;
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const coords = points.map((p, i) => {
-    const x = (i / (points.length - 1)) * (W - 6) + 3;
-    const y = H - 5 - ((p.value - min) / span) * (H - 10);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const last = points[points.length - 1]!;
-  const first = points[0]!;
-  const direction =
-    last.value > first.value
-      ? "rising"
-      : last.value < first.value
-        ? "falling"
-        : "steady";
-  const color =
-    flag === "high" || flag === "critical"
-      ? "var(--color-alert)"
-      : flag === "low"
-        ? "var(--color-amber)"
-        : "var(--color-pine)";
-  return (
-    <span className="inline-flex items-center">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width={W}
-        height={H}
-        aria-hidden
-        className="overflow-visible"
-      >
-        <polyline
-          points={coords.join(" ")}
-          fill="none"
-          stroke={color}
-          strokeWidth="1.75"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        <circle
-          cx={coords[coords.length - 1]!.split(",")[0]}
-          cy={coords[coords.length - 1]!.split(",")[1]}
-          r="2.5"
-          fill={color}
-        />
-        <title>{`Latest ${last.value} ${unit ?? ""} (${formatDate(last.date, "short")})`}</title>
-      </svg>
-      <span className="sr-only">
-        Latest {last.value} {unit ?? ""} on {formatDate(last.date, "short")}, trend {direction}{" "}
-        over {points.length} values (from {first.value} to {last.value}).
-      </span>
-    </span>
-  );
-}
 
 /* ---------------- Page ---------------- */
 
@@ -145,12 +83,15 @@ export default async function DoctorPatientPage({
 
   /* ---------- No access path ---------- */
   if (!decision.allowed) {
+    // §7.9 Find patient: before authorization NOTHING about the patient is
+    // revealed — no name, sex, DOB, or any demographic hint. The header
+    // identifies the record only by its non-secret Patient ID.
     return (
       <>
         <PageHeader
           eyebrow="Doctor portal"
-          title={patient.fullName}
-          description={`${patient.sex ?? ""} ${patient.dob ? `· b. ${formatDate(patient.dob)}` : ""}`}
+          title="Consent required"
+          description={`MediLink Patient ID ${patient.patientCode ?? patient.id} — the record's contents stay private until the patient approves your request.`}
         />
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <Card>
@@ -192,6 +133,20 @@ export default async function DoctorPatientPage({
   const viaEmergency = decision.via === "emergency";
   const tab = TABS.some((t) => t.key === rawTab) ? (rawTab as string) : "summary";
 
+  // Governing grant for the AccessBanner: the practitioner's soonest-expiring
+  // active consent on this patient (emergency view keeps its red banner).
+  const bannerGrant =
+    !viaEmergency && practitioner
+      ? (await consent.activeForPractitioner(patient.id, practitioner.id)).sort(
+          (a, b) => a.expiresAt.getTime() - b.expiresAt.getTime(),
+        )[0] ?? null
+      : null;
+  const bannerPurpose = bannerGrant
+    ? ({ treatment: "Treatment", consultation: "Consultation", emergency: "Emergency", record_review: "Record review" } as Record<string, string>)[
+        bannerGrant.purpose
+      ] ?? bannerGrant.purpose
+    : null;
+
   const age = ageFrom(patient.dob);
   const ageDob = age != null ? `${age}y · b. ${formatDate(patient.dob, "short")}` : "";
 
@@ -215,6 +170,61 @@ export default async function DoctorPatientPage({
 
   return (
     <>
+      {/* Sticky AccessBanner (§7.9): purpose, granted scopes, exact expiry,
+          renewal affordance — always visible while the workspace is open. */}
+      <div className="sticky top-0 z-20 -mx-1 mb-4 rounded-lg border border-line bg-paper-raised px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="text-[13px] text-ink">
+            Viewing under{" "}
+            <span className="font-semibold text-ink">
+              {bannerPurpose ? `${bannerPurpose} access` : "consent access"}
+            </span>
+            {viaEmergency ? (
+              <span className="font-semibold text-alert"> — EMERGENCY, critical scopes only</span>
+            ) : null}
+            {bannerGrant ? (
+              <>
+                {" — "}
+                {(bannerGrant.scopes as ConsentScope[])
+                  .map((s) => SCOPE_LABELS[s] ?? s)
+                  .join(", ")}
+                {" — expires "}
+                <span className="num font-medium text-ink">
+                  {formatDate(bannerGrant.expiresAt)} ·{" "}
+                  {bannerGrant.expiresAt.toLocaleTimeString("en-IN", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </>
+            ) : null}
+          </p>
+          <Link
+            href={`/portal/doctor?renew=${patient.id}`}
+            className="rounded-lg border border-line-strong bg-paper-sunk px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
+          >
+            Request renewal
+          </Link>
+        </div>
+      </div>
+
+      {/* PatientContextBar (§7.9): name + ID always visible with an
+          explicit wrong-patient escape while the workspace is open. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-line bg-paper-sunk px-4 py-2.5">
+        <p className="text-[13px] text-ink-soft">
+          <span className="font-medium text-ink">{patient.fullName}</span>
+          <span className="num ml-2 text-xs text-ink-faint">
+            {patient.patientCode ?? patient.id}
+          </span>
+        </p>
+        <Link
+          href="/portal/doctor"
+          className="text-xs font-medium text-pine underline-offset-2 hover:underline"
+        >
+          ← Leave patient record
+        </Link>
+      </div>
+
       {viaEmergency ? (
         <div className="mb-4 rounded-lg border border-alert bg-alert px-4 py-3 text-on-alert">
           <p className="text-sm font-semibold">
@@ -377,9 +387,17 @@ export default async function DoctorPatientPage({
       {/* Tabs (URL-state) */}
       <SectionTabs
         tabs={TABS.map((t) => {
-          const allowed = viaEmergency
-            ? t.scopes.every((s) => EMERGENCY_SCOPES.includes(s)) || t.scopes.length === 0
-            : true;
+          // One gating idiom for both access modes: a tab is allowed when it
+          // needs no scope or every scope it needs is granted. Emergency mode
+          // additionally never allows the contribute tab — writes during
+          // break-glass contradict the "critical scopes only" banner, and the
+          // documents upload can never succeed under emergency scopes.
+          const scopeAllowed =
+            t.scopes.length === 0 || t.scopes.every((s) => scopes.includes(s));
+          const allowed =
+            viaEmergency && (t.key === "contribute" || !scopeAllowed)
+              ? false
+              : scopeAllowed;
           return {
             key: t.key,
             label: t.label,
@@ -393,66 +411,61 @@ export default async function DoctorPatientPage({
       {/* ---------------- Summary tab ---------------- */}
       {tab === "summary" ? (
         <div role="tabpanel" aria-label="Summary" className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="eyebrow">Search this record</p>
-            <RecordSearchForm patientId={patient.id} />
-          </div>
+          <RecordSearchForm patientId={patient.id} />
           {rawQ ? <RecordSearchResults patientId={patient.id} q={rawQ} scopes={scopes} /> : null}
-          <Card>
-            <CardHeader
-              eyebrow="AI-generated summary"
-              title="SBAR summary"
-              action={
-                summary ? (
+          {summary ? (
+            <Card className="overflow-hidden">
+              <EvidenceSummaryShell
+                meta={`generated ${formatDate(summary.summary.createdAt)}`}
+                action={
                   <Badge tone={summary.summary.mode === "llm" ? "info" : "neutral"}>
                     {summary.summary.mode === "llm"
                       ? `LLM · ${summary.summary.model}`
                       : "deterministic"}
                   </Badge>
-                ) : null
-              }
-            />
-            {summary ? (
-              <div className="space-y-5 px-4 py-4 sm:px-5">
+                }
+              >
+                {/* Evidence rail: recorded-fact groups as stations on a line. */}
                 {(
                   [
-                    ["situation", "Situation"],
-                    ["background", "Background"],
-                    ["assessment", "Assessment"],
-                    ["plan", "Plan"],
+                    // §7.13: recorded-fact language — never implies AI
+                    // interpretation or recommendations.
+                    ["situation", "Recorded critical facts"],
+                    ["background", "Relevant recorded history"],
+                    ["assessment", "Recent documented changes"],
+                    ["plan", "Recorded follow-up & medicines"],
                   ] as const
                 ).map(([section, label]) => {
                   const claims = summary.claims.filter((c) => c.section === section);
                   if (!claims.length) return null;
                   return (
-                    <section key={section}>
-                      <p className="eyebrow mb-2">{label}</p>
-                      <ul className="space-y-2">
-                        {claims.map((c) => (
-                          <ClaimLine
-                            key={c.id}
-                            text={c.text}
-                            sources={c.sources}
-                            tone={c.text.startsWith("⚠") ? "alert" : undefined}
-                          />
-                        ))}
-                      </ul>
-                    </section>
+                    <EvidenceGroup key={section} label={label}>
+                      {claims.map((c) => (
+                        <EvidenceClaim
+                          key={c.id}
+                          text={c.text}
+                          tone={c.text.startsWith("⚠") ? "alert" : undefined}
+                          citation={
+                            <CitationChipsInline sources={c.sources} />
+                          }
+                        />
+                      ))}
+                    </EvidenceGroup>
                   );
                 })}
-                <p className="border-t border-line pt-3 text-[11px] text-ink-faint">
-                  AI-generated — verify against sources. Every statement links to the records it
-                  was built from. Generated {formatDate(summary.summary.createdAt)}.
-                </p>
-              </div>
-            ) : (
+              </EvidenceSummaryShell>
+            </Card>
+          ) : (
+            <Card>
               <div className="px-4 py-4 sm:px-5">
                 <EmptyState
                   title="No summary yet"
                   body="Generate one — every claim will carry numbered citations to the underlying records."
                 />
               </div>
-            )}
+            </Card>
+          )}
+          <Card>
             <div className="border-t border-line">
               <GenerateSummaryForm patientId={patient.id} hasSummary={!!summary} />
             </div>
@@ -482,7 +495,15 @@ export default async function DoctorPatientPage({
       ) : null}
 
       {/* ---------------- Contribute tab ---------------- */}
-      {tab === "contribute" ? (
+      {tab === "contribute" && viaEmergency ? (
+        <div role="tabpanel" aria-label="Add or upload">
+          <Alert tone="amber" title="Not available during emergency access">
+            Emergency (break-glass) access is read-only over the critical data
+            set. Contributing records or documents requires the patient's
+            consent — request it once the patient can decide.
+          </Alert>
+        </div>
+      ) : tab === "contribute" ? (
         <div role="tabpanel" aria-label="Add or upload">
         {practitioner?.verificationStatus === "verified" ? (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -607,7 +628,10 @@ async function TimelineSection({
   patientId: string;
   scopes: string[];
 }) {
-  const events = await records.timeline(patientId, { scopes });
+  const [events, provenanceRows] = await Promise.all([
+    records.timeline(patientId, { scopes }),
+    provenance.forPatient(patientId),
+  ]);
   const visible = events.filter((e) => {
     const map: Record<string, string> = {
       condition: "conditions",
@@ -623,15 +647,48 @@ async function TimelineSection({
     return scopes.includes(map[e.kind] ?? "documents");
   });
 
-  const byYear = new Map<string, typeof visible>();
-  for (const e of visible) {
-    const year = e.date ? e.date.slice(0, 4) : "—";
-    if (!byYear.has(year)) byYear.set(year, []);
-    byYear.get(year)!.push(e);
-  }
+  const resourceTypeFor = (kind: string): string => {
+    const map: Record<string, string> = {
+      condition: "condition",
+      allergy: "allergy",
+      medication: "medication_statement",
+      observation: "observation",
+      procedure: "procedure",
+      immunization: "immunization",
+      report: "diagnostic_report",
+    };
+    return map[kind] ?? kind;
+  };
 
-  if (!visible.length)
+  const items = visible.map((e) => ({
+    id: e.id,
+    kind: e.kind,
+    resourceType: resourceTypeFor(e.kind),
+    label: e.label,
+    date: e.date,
+    detail: e.detail,
+    trust: e.trust,
+    value: (e.payload?.value as string | undefined) ?? null,
+    valueString: (e.payload?.valueString as string | undefined) ?? null,
+    unit: e.unit ?? null,
+    referenceRangeLow: e.referenceRangeLow ?? null,
+    referenceRangeHigh: e.referenceRangeHigh ?? null,
+    flag: e.flag ?? null,
+    payload: e.payload,
+    provenance: provenanceRows.get(e.id)
+      ? { ...provenanceRows.get(e.id)!, label: e.label }
+      : null,
+  }));
+
+  if (!items.length)
     return <EmptyState title="Nothing viewable in the current consent scope" />;
+
+  const byYear = new Map<string, typeof items>();
+  for (const item of items) {
+    const year = item.date ? item.date.slice(0, 4) : "—";
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year)!.push(item);
+  }
 
   return (
     <div className="space-y-6">
@@ -644,28 +701,7 @@ async function TimelineSection({
               <span className="h-px flex-1 bg-line" aria-hidden />
             </div>
             <Card>
-              <ul className="divide-y divide-line">
-                {byYear.get(year)!.map((e) => (
-                  <li
-                    key={`${e.kind}-${e.id}`}
-                    className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 sm:px-5"
-                  >
-                    <div className="min-w-0">
-                      <p className={cn("text-[13.5px]", e.kind === "allergy" ? "font-medium text-alert" : "text-ink")}>
-                        {e.label}
-                      </p>
-                      {e.detail ? <p className="text-[11.5px] text-ink-faint">{e.detail}</p> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge>{e.kind}</Badge>
-                      {e.trust === "verified" ? <span className="seal">✓</span> : null}
-                      <span className="num text-[11px] text-ink-faint">
-                        {formatDate(e.date, "short")}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <ClinicalList items={byYear.get(year)!} allowCorrect patientId={patientId} />
             </Card>
           </section>
         ))}
@@ -688,59 +724,48 @@ async function LabsSection({
       />
     );
 
-  const trends = await records.trends(patientId);
-  const entries = [...trends.entries()];
+  const [obs, provenanceRows] = await Promise.all([
+    records.observationsFor(patientId),
+    provenance.forPatient(patientId),
+  ]);
+  if (!obs.length) return <EmptyState title="No lab data yet" />;
 
-  if (!entries.length) return <EmptyState title="No lab data yet" />;
+  // Group by source report + analyte, newest first — §7.7 groups by report
+  // before anything else. Range bars render only where the source provided a
+  // numeric range + unit; the textual fallback always carries the facts.
+  const items = obs.map((o) => ({
+    id: o.id,
+    kind: "observation",
+    resourceType: "observation",
+    label: `${o.name}${o.panel ? ` (${o.panel})` : ""}`,
+    date: o.effectiveDate ?? o.createdAt.toISOString().slice(0, 10),
+    detail: o.flag !== "unknown" ? `source flag: ${o.flag}` : null,
+    trust: o.trust,
+    value: o.value,
+    valueString: o.valueString,
+    unit: o.unit,
+    referenceRangeLow: o.referenceRangeLow,
+    referenceRangeHigh: o.referenceRangeHigh,
+    flag: o.flag,
+    payload: { name: o.name },
+    provenance: provenanceRows.get(o.id)
+      ? { ...provenanceRows.get(o.id)!, label: o.name }
+      : null,
+  }));
 
-  // Latest value per analyte + sparkline
   return (
     <Card>
       <CardHeader
-        eyebrow="Structured & trend-able"
-        title="Lab values over time"
-        action={<Badge tone="pine">{entries.length} analytes</Badge>}
+        eyebrow="Source ranges, source flags"
+        title="Lab values with reference ranges"
+        action={<Badge tone="pine">{items.length} results</Badge>}
       />
-      <ul className="divide-y divide-line">
-        {entries
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([name, points]) => {
-            const last = points[points.length - 1];
-            return (
-              <li
-                key={name}
-                className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-5"
-              >
-                <div className="min-w-36">
-                  <p className="text-[13.5px] font-medium text-ink">{name}</p>
-                  <p className="num text-[11px] text-ink-faint">
-                    {points.length} value{points.length > 1 ? "s" : ""}
-                    {last.date ? ` · latest ${formatDate(last.date, "short")}` : ""}
-                  </p>
-                </div>
-                <Sparkline points={points} unit={last.unit} flag={last.flag} />
-                <p className="num text-right text-[15px] font-semibold text-ink">
-                  {last.value}
-                  <span className="ml-1 text-[11px] font-normal text-ink-soft">{last.unit}</span>
-                  <Badge
-                    tone={
-                      last.flag === "critical"
-                        ? "alert"
-                        : last.flag === "high"
-                          ? "amber"
-                          : last.flag === "low"
-                            ? "amber"
-                            : "pine"
-                    }
-                    className="ml-2"
-                  >
-                    {last.flag}
-                  </Badge>
-                </p>
-              </li>
-            );
-          })}
-      </ul>
+      <ClinicalList items={items} />
+      <p className="border-t border-line px-4 py-3 text-[11px] text-ink-faint sm:px-5">
+        Range bars appear only when the source lab provided a numeric reference range and
+        unit. MediLink never re-evaluates whether a value is normal — the source lab&apos;s own
+        flag is shown verbatim.
+      </p>
     </Card>
   );
 }
@@ -793,7 +818,7 @@ async function DocumentsSection({
                   href={`/api/files/${d.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-md border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
+                  className="rounded-lg border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
                 >
                   Open ↗
                 </a>

@@ -73,11 +73,11 @@ export function TimelineFilter({ basePath }: { basePath: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search your history — e.g. creatinine, 2021, penicillin"
-          className="h-11 flex-1 rounded-md border border-line-strong bg-paper-raised px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none"
+          className="h-11 flex-1 rounded-lg border border-line-strong bg-paper-raised px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none"
         />
         <button
           type="submit"
-          className="h-11 cursor-pointer rounded-md border border-line-strong bg-paper-raised px-4 text-[13px] font-medium text-ink transition-colors hover:border-ink-faint"
+          className="h-11 cursor-pointer rounded-lg border border-line-strong bg-paper-raised px-4 text-[13px] font-medium text-ink transition-colors hover:border-ink-faint"
         >
           Search
         </button>

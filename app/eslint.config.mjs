@@ -13,6 +13,15 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // React Compiler's purity lint: server components legitimately read the
+      // clock during render (dynamic pages), and R3F/three mutate objects
+      // inside useFrame by design. Both patterns are established in this
+      // codebase (see docs/decisions.md).
+      "react-hooks/purity": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

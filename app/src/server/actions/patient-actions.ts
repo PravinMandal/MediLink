@@ -10,6 +10,7 @@ import { consent, type ConsentScope } from "@/server/modules/consent/service";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
 import { notify } from "@/server/modules/notifications/service";
+import { disputes } from "@/server/modules/records/versions";
 import type { FormState } from "./auth-actions";
 
 export async function updatePatientProfileAction(
@@ -191,10 +192,70 @@ export async function requestAccessAction(
   return { ok: "Request sent. The patient will see it in their notifications." };
 }
 
+/** Patient flags a clinical record as wrong (BuildPlan §7.10, Backlog D).
+ *  Only the owning patient account can raise a dispute on their own chart,
+ *  and a dispute never rewrites a provider's attestation. */
+export async function raiseDisputeAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (user.role !== "patient")
+    return { error: "Only the patient account can flag concerns from this page." };
+  const patient = await patientService.forUser(user.id);
+  if (!patient) return { error: "No patient record linked to this account." };
+
+  const resourceId = String(formData.get("resourceId") ?? "").trim();
+  const resourceType = String(formData.get("resourceType") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!resourceId || !resourceType)
+    return { error: "Missing record to flag." };
+  if (reason.length < 5)
+    return { error: "Describe what is wrong (at least 5 characters)." };
+
+  try {
+    await disputes.raise({
+      patientId: patient.id,
+      raisedBy: user.id,
+      resourceId,
+      resourceType,
+      reason,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    return { error: "Could not flag this record. Try again." };
+  }
+
+  revalidatePath("/portal/patient/record");
+  return { ok: "Concern recorded. This record is now marked disputed and under review." };
+}
+
 export async function markAllNotificationsReadAction(): Promise<void> {
   const user = await requireUser();
   await notify.markAllRead(user.id);
   revalidatePath("/portal", "layout");
+  return;
+}
+
+/** Patient rotates the emergency-card QR (lost or reprinted card). */
+export async function rotateEmergencyCardAction(): Promise<FormState> {
+  const user = await requireUser();
+  if (user.role !== "patient") return { error: "Patient accounts only." };
+  const patient = await patientService.forUser(user.id);
+  if (!patient) return { error: "No patient record linked to this account." };
+  try {
+    const { emergencyCard } = await import(
+      "@/server/modules/identity/emergency-card"
+    );
+    await emergencyCard.rotate(user.id, patient.id);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    return { error: "Could not replace the emergency code. Try again." };
+  }
+  revalidatePath("/portal/patient/emergency");
+  return {
+    ok: "New emergency code on the card. Any previously printed card no longer resolves.",
+  };
 }
 
 /** Update account name/phone. */

@@ -82,7 +82,7 @@ export default async function AccessHistory({
                   <Link
                     href={`/portal/patient/access-history?page=${page - 1}`}
                     rel="prev"
-                    className="rounded-md border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
+                    className="rounded-lg border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
                   >
                     ← Previous
                   </Link>
@@ -91,7 +91,7 @@ export default async function AccessHistory({
                   <Link
                     href={`/portal/patient/access-history?page=${page + 1}`}
                     rel="next"
-                    className="rounded-md border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
+                    className="rounded-lg border border-line-strong bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-faint"
                   >
                     Next →
                   </Link>

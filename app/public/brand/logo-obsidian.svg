@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MediLink seal (Obsidian)">
+  <defs>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4D9FFF" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#4D9FFF" stop-opacity="0.35"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Obsidian background: night ward -->
+  <rect width="512" height="512" rx="96" fill="#0A0A0C"/>
+
+  <!-- Hexagonal seal -->
+  <path d="M256 64 415 156v200L256 448 97 356V156Z"
+        fill="rgba(77,159,255,0.06)"
+        stroke="url(#edge)" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- M formed by two strokes meeting at center with an interlocking link -->
+  <g filter="url(#glow)" stroke="#4D9FFF" stroke-width="18"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M166 340V190l90 90"/>
+    <path d="M346 340V190l-90 90"/>
+    <rect x="238" y="230" width="36" height="36" rx="12" stroke-width="12"/>
+  </g>
+
+  <!-- baseline: the record line beneath -->
+  <path d="M168 356h176" stroke="#4D9FFF" stroke-width="8"
+        stroke-linecap="round" opacity="0.5"/>
+</svg>

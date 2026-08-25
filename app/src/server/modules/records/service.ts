@@ -691,6 +691,14 @@ export const records = {
       .limit(limit);
   },
 
+  async observationById(id: string) {
+    const [row] = await db
+      .select()
+      .from(observations)
+      .where(eq(observations.id, id));
+    return row ?? null;
+  },
+
   /** Lab trends: name → chronological series (for sparklines/charts). */
   async trends(patientId: string, names?: string[]) {
     const rows = await db
@@ -849,6 +857,15 @@ export const records = {
       trust: string;
       organizationId: string | null;
       sourceDocumentId: string | null;
+      /** Observation extras for RangeBar rendering (§7.7). */
+      unit?: string | null;
+      referenceRangeLow?: string | null;
+      referenceRangeHigh?: string | null;
+      flag?: string | null;
+      /** Non-null when the row is superseded by a correction (§7.10). */
+      supersededById?: string | null;
+      /** Original clinical fields for correction forms. */
+      payload?: Record<string, unknown>;
     };
 
     const events: Event[] = [];
@@ -862,6 +879,7 @@ export const records = {
         trust: c.trust,
         organizationId: c.organizationId,
         sourceDocumentId: c.sourceDocumentId,
+        payload: { name: c.name, status: c.status, onsetDate: c.onsetDate, notes: c.notes },
       });
     for (const a of allergiesRows)
       events.push({
@@ -873,6 +891,12 @@ export const records = {
         trust: a.trust,
         organizationId: a.organizationId,
         sourceDocumentId: a.sourceDocumentId,
+        payload: {
+          substance: a.substance,
+          criticality: a.criticality,
+          reaction: a.reaction,
+          onsetDate: a.onsetDate,
+        },
       });
     for (const m of meds)
       events.push({
@@ -884,6 +908,14 @@ export const records = {
         trust: m.trust,
         organizationId: m.organizationId,
         sourceDocumentId: m.sourceDocumentId,
+        payload: {
+          medication: m.medication,
+          dose: m.dose,
+          route: m.route,
+          frequency: m.frequency,
+          startDate: m.startDate,
+          status: m.status,
+        },
       });
     for (const o of obs)
       events.push({
@@ -897,6 +929,17 @@ export const records = {
         trust: o.trust,
         organizationId: o.organizationId,
         sourceDocumentId: o.sourceDocumentId,
+        unit: o.unit,
+        referenceRangeLow: o.referenceRangeLow,
+        referenceRangeHigh: o.referenceRangeHigh,
+        flag: o.flag,
+        payload: {
+          name: o.name,
+          value: o.value,
+          valueString: o.valueString,
+          panel: o.panel,
+          effectiveDate: o.effectiveDate,
+        },
       });
     for (const p of procs)
       events.push({
@@ -952,6 +995,96 @@ export const records = {
         sourceDocumentId: e.sourceDocumentId,
       });
 
+    events.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+    return events;
+  },
+
+  /**
+   * Superseded originals (corrected records, §7.10) for the "show corrected
+   * history" view: rows whose supersededById points at a replacement.
+   * Returns the same event shape as timeline() for the neutral banner UI.
+   */
+  async supersededFor(patientId: string) {
+    const tables = [
+      {
+        table: conditions,
+        kind: "condition",
+        toEvent: (r: typeof conditions.$inferSelect) => ({
+          kind: "condition",
+          id: r.id,
+          label: r.name,
+          date: r.onsetDate ?? r.createdAt.toISOString().slice(0, 10),
+          detail: r.status,
+          trust: r.trust,
+          organizationId: r.organizationId,
+          sourceDocumentId: r.sourceDocumentId,
+          supersededById: r.supersededById,
+          payload: { name: r.name, status: r.status, onsetDate: r.onsetDate, notes: r.notes },
+        }),
+      },
+      {
+        table: allergies,
+        kind: "allergy",
+        toEvent: (r: typeof allergies.$inferSelect) => ({
+          kind: "allergy",
+          id: r.id,
+          label: `Allergy — ${r.substance}`,
+          date: r.onsetDate ?? r.createdAt.toISOString().slice(0, 10),
+          detail: [r.criticality, r.reaction].filter(Boolean).join(" · "),
+          trust: r.trust,
+          organizationId: r.organizationId,
+          sourceDocumentId: r.sourceDocumentId,
+          supersededById: r.supersededById,
+          payload: {
+            substance: r.substance,
+            criticality: r.criticality,
+            reaction: r.reaction,
+            onsetDate: r.onsetDate,
+          },
+        }),
+      },
+      {
+        table: medicationStatements,
+        kind: "medication",
+        toEvent: (r: typeof medicationStatements.$inferSelect) => ({
+          kind: "medication",
+          id: r.id,
+          label: `${r.medication}${r.dose ? ` ${r.dose}` : ""}${r.frequency ? `, ${r.frequency}` : ""}`,
+          date: r.startDate ?? r.createdAt.toISOString().slice(0, 10),
+          detail: r.status,
+          trust: r.trust,
+          organizationId: r.organizationId,
+          sourceDocumentId: r.sourceDocumentId,
+          supersededById: r.supersededById,
+          payload: {
+            medication: r.medication,
+            dose: r.dose,
+            route: r.route,
+            frequency: r.frequency,
+            startDate: r.startDate,
+            status: r.status,
+          },
+        }),
+      },
+    ] as const;
+
+    const lists = await Promise.all(
+      tables.map(({ table }) =>
+        db
+          .select()
+          .from(table)
+          .where(
+            and(
+              eq(table.patientId, patientId),
+              sql`${table.supersededById} IS NOT NULL`,
+            ),
+          )
+          .orderBy(desc(table.createdAt)),
+      ),
+    );
+    const events = lists.flatMap((rows, i) =>
+      rows.map((r) => tables[i]!.toEvent(r as never)),
+    );
     events.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
     return events;
   },

@@ -23,8 +23,8 @@ import * as THREE from "three";
 const C = {
   paper: new THREE.Color("#f7f8f6"),
   paperSunk: new THREE.Color("#eff1ee"),
-  pine: new THREE.Color("#14594b"),
-  pineDeep: new THREE.Color("#0e4036"),
+  pine: new THREE.Color("#1a56c4"),
+  pineDeep: new THREE.Color("#12429e"),
 };
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -66,7 +66,7 @@ function DocumentMesh({ progress }: { progress: React.RefObject<number> }) {
     const tex = canvasTexture(256, 320, (ctx) => {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, 256, 320);
-      ctx.fillStyle = "#0e4036";
+      ctx.fillStyle = "#12429e";
       ctx.fillRect(24, 22, 120, 9);
       ctx.fillRect(24, 40, 190, 4);
       ctx.fillStyle = "#1b2420";
@@ -112,7 +112,7 @@ function DocumentMesh({ progress }: { progress: React.RefObject<number> }) {
 
   const { ringGeo, ringMat, stampGeo, stampMat, stampTex } = useMemo(() => {
     const stampTex = canvasTexture(512, 128, (ctx) => {
-      ctx.fillStyle = "#14594b";
+      ctx.fillStyle = "#1a56c4";
       ctx.font = "700 40px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -211,7 +211,7 @@ function ConsentGate({ progress }: { progress: React.RefObject<number> }) {
   const { pillarGeo, pillarMat, beamGeo, beamMat, spriteMat, spriteTex } =
     useMemo(() => {
       const spriteTex = canvasTexture(640, 96, (ctx) => {
-        ctx.fillStyle = "#0e4036";
+        ctx.fillStyle = "#12429e";
         ctx.fillRect(0, 0, 640, 96);
         ctx.fillStyle = "#e3efea";
         ctx.font = "600 32px monospace";
@@ -294,7 +294,7 @@ function SummarySheet({ progress }: { progress: React.RefObject<number> }) {
       ctx.fillStyle = "#5f6b64";
       ctx.font = "600 22px monospace";
       ctx.fillText("CLINICAL SUMMARY · SBAR", 32, 56);
-      ctx.fillStyle = "#14594b";
+      ctx.fillStyle = "#1a56c4";
       ctx.font = "700 20px monospace";
       ctx.fillText("✓ SOURCES LINKED", 32, 88);
       const claims: Array<[string, string]> = [
@@ -314,7 +314,7 @@ function SummarySheet({ progress }: { progress: React.RefObject<number> }) {
           const x = 32 + c * 52;
           ctx.fillStyle = "#e3efea";
           ctx.fillRect(x, y + 46, 44, 30);
-          ctx.strokeStyle = "#14594b";
+          ctx.strokeStyle = "#1a56c4";
           ctx.strokeRect(x, y + 46, 44, 30);
           ctx.fillStyle = "#0d3a30";
           ctx.font = "700 18px monospace";
