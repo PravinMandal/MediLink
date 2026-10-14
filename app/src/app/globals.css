@@ -635,7 +635,10 @@ body {
 /* ------------------------------------------------------------------------- */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 420ms;
+  /* 420ms felt like a strobe on full-page theme swaps (the whole viewport
+     repaints, not a small panel). 220ms keeps the cinematic wipe readable
+     without the flicker. */
+  animation-duration: 220ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 

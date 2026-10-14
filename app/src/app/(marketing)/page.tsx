@@ -159,7 +159,10 @@ export default function MarketingPage() {
       </section>
 
       {/* ---------------- Pillars (bento) ---------------- */}
-      <section aria-label="Why MediLink" className="relative py-20 sm:py-28">
+      {/* Explicit paper base: the marketing wrapper is dark for the hero,
+          so transparent editorial sections would render dark-bg with dark
+          ink in light mode. */}
+      <section aria-label="Why MediLink" className="relative bg-paper py-20 sm:py-28">
         <div className="mx-auto max-w-6xl px-5 sm:px-8">
           <Reveal>
             <p className="eyebrow mb-3">Built on evidence</p>
@@ -231,9 +234,11 @@ export default function MarketingPage() {
       <VaultAct />
 
       {/* ---------------- Journey steps ---------------- */}
-      <section id="how" aria-label="How MediLink works" className="scroll-mt-20 border-y border-line bg-paper-sunk/40 py-20 sm:py-28">
+      <section id="how" aria-label="How MediLink works" className="scroll-mt-20 border-y border-line bg-paper-sunk py-20 sm:py-28">
         <div className="mx-auto max-w-6xl px-5 sm:px-8">
           <Reveal>
+            {/* Solid sunk base (not /40): the translucent wash dropped the
+                eyebrow/heading contrast below AA against the paper behind. */}
             <p className="eyebrow mb-3">The journey</p>
             <h2 className="max-w-2xl font-display text-[clamp(1.9rem,4vw,2.7rem)] font-bold leading-[1.12] tracking-[-0.02em] text-ink">
               Four steps, zero blind trust.
@@ -260,7 +265,7 @@ export default function MarketingPage() {
       </section>
 
       {/* ---------------- Roles ---------------- */}
-      <section aria-label="Built for every role" className="py-20 sm:py-28">
+      <section aria-label="Built for every role" className="bg-paper py-20 sm:py-28">
         <div className="mx-auto max-w-6xl px-5 sm:px-8">
           <Reveal>
             <p className="eyebrow mb-3">One vault, every role</p>
@@ -292,7 +297,7 @@ export default function MarketingPage() {
       </section>
 
       {/* ---------------- Honesty + security ---------------- */}
-      <section id="trust" aria-label="What MediLink does not do" className="scroll-mt-20 pb-20 sm:pb-28">
+      <section id="trust" aria-label="What MediLink does not do" className="scroll-mt-20 bg-paper pb-20 sm:pb-28">
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 px-5 sm:px-8 lg:grid-cols-2">
           <Reveal className="h-full">
             <div className="h-full rounded-3xl frost-strong border border-line p-7 shadow-xl sm:p-10">
@@ -359,7 +364,8 @@ export default function MarketingPage() {
       </section>
 
       {/* ---------------- FAQ ---------------- */}
-      <section aria-label="Questions" className="border-t border-line bg-paper-sunk/40 py-20 sm:py-24">
+      {/* Same solid-base contrast fix as #how above. */}
+      <section aria-label="Questions" className="border-t border-line bg-paper-sunk py-20 sm:py-24">
         <div className="mx-auto max-w-3xl px-5 sm:px-8">
           <Reveal>
             <p className="eyebrow mb-3 text-center">Questions</p>
