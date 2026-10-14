@@ -1,6 +1,4 @@
-"use client";
-
-import { RouteSkeleton } from "@/components/portal-states";
+import { RouteSkeleton } from "@/components/route-skeleton";
 
 export default function Loading() {
   return <RouteSkeleton />;

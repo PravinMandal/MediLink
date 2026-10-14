@@ -18,7 +18,12 @@ import {
   Stethoscope,
 } from "lucide-react";
 import { LandingHero } from "@/components/marketing/landing-hero";
-import { VaultAct } from "@/components/marketing/vault-act";
+/**
+ * VaultAct mounts client-only (ssr:false via the loader): three.js + fiber
+ * + drei must never enter the server bundle. Reduced-motion / no-WebGL
+ * users get the static beat cards from inside the component.
+ */
+import { VaultActDynamic as VaultAct } from "@/components/marketing/vault-act-loader";
 import { FaqAccordion } from "@/components/marketing/faq";
 import { Reveal } from "@/components/marketing/reveal";
 import { LogoMark } from "@/components/logo-mark";

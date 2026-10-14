@@ -239,68 +239,91 @@ export const accessRequestsService = {
     // never the caller-supplied input.patientId (ownership poisoning).
     const patientId = req.patientId;
 
-    // Create the consent grant tied to the request.
-    const [grant] = await db
-      .insert(consents)
-      .values({
-        patientId,
-        granteeType: req.requesterPractitionerId ? "practitioner" : "organization",
-        granteePractitionerId: req.requesterPractitionerId,
-        granteeOrganizationId: req.requesterOrganizationId,
-        scopes,
-        purpose: (req.purpose === "emergency" ? "emergency" : req.purpose === "record_review" ? "record_review" : req.purpose === "consultation" ? "consultation" : "treatment") as
-          | "treatment" | "consultation" | "emergency" | "record_review",
-        status: "active",
-        expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
-        accessRequestId: req.id,
+    // Grant + artefact + status flip commit atomically: a crash between
+    // them used to leave live consents with no receipt, or retried
+    // approvals minting duplicate grants. Audit + notify stay post-commit
+    // (audit's chain insert can't join a caller tx by design); the status
+    // guard below makes retries idempotent.
+    const grantedAt = new Date();
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    const code = receiptCode();
+    const { grant, row } = await db.transaction(async (tx) => {
+      const [g] = await tx
+        .insert(consents)
+        .values({
+          patientId,
+          granteeType: req.requesterPractitionerId ? "practitioner" : "organization",
+          granteePractitionerId: req.requesterPractitionerId,
+          granteeOrganizationId: req.requesterOrganizationId,
+          scopes,
+          purpose: (req.purpose === "emergency" ? "emergency" : req.purpose === "record_review" ? "record_review" : req.purpose === "consultation" ? "consultation" : "treatment") as
+            | "treatment" | "consultation" | "emergency" | "record_review",
+          status: "active",
+          expiresAt,
+          accessRequestId: req.id,
+          policyVersion: POLICY_VERSION,
+          receiptCode: code,
+          // Explicit app-clock timestamp so the hashed artefact below commits
+          // to the exact value stored — not a DB defaultNow() that would
+          // drift from the hash by clock-skew + tx latency.
+          grantedAt,
+        })
+        .returning();
+
+      // Immutable consent artefact with hash.
+      const artifact = {
+        version: 1,
         policyVersion: POLICY_VERSION,
-        receiptCode: receiptCode(),
-      })
-      .returning();
+        request: {
+          id: req.id,
+          correlationId: req.correlationId,
+          purpose: req.purpose,
+          purposeDetail: req.purposeDetail,
+          visitReference: req.visitReference,
+          requestedDays: req.requestedDays,
+          suggestedScopes: req.suggestedScopes,
+          requester: req.requesterSnapshot,
+          submittedAt: req.submittedAt?.toISOString() ?? null,
+        },
+        grant: {
+          consentId: g!.id,
+          approvedScopes: scopes,
+          grantedDays: days,
+          grantedAt: grantedAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+        },
+        patient: { patientId },
+      };
+      await tx.insert(consentArtifacts).values({
+        consentId: g!.id,
+        accessRequestId: req.id,
+        artifact,
+        artifactSha256: createHash("sha256").update(stableStringify(artifact)).digest("hex"),
+        policyVersion: POLICY_VERSION,
+        receiptCode: code,
+      });
 
-    // Immutable consent artefact with hash.
-    const artifact = {
-      version: 1,
-      policyVersion: POLICY_VERSION,
-      request: {
-        id: req.id,
-        correlationId: req.correlationId,
-        purpose: req.purpose,
-        purposeDetail: req.purposeDetail,
-        visitReference: req.visitReference,
-        requestedDays: req.requestedDays,
-        suggestedScopes: req.suggestedScopes,
-        requester: req.requesterSnapshot,
-        submittedAt: req.submittedAt?.toISOString() ?? null,
-      },
-      grant: {
-        consentId: grant.id,
-        approvedScopes: scopes,
-        grantedDays: days,
-        grantedAt: grant.grantedAt.toISOString(),
-        expiresAt: grant.expiresAt.toISOString(),
-      },
-      patient: { patientId },
-    };
-    await db.insert(consentArtifacts).values({
-      consentId: grant.id,
-      accessRequestId: req.id,
-      artifact,
-      artifactSha256: createHash("sha256").update(stableStringify(artifact)).digest("hex"),
-      policyVersion: POLICY_VERSION,
-      receiptCode: grant.receiptCode!,
+      // Status-guarded flip: only submitted/patient_viewed rows move, so a
+      // retried approval after a post-commit crash throws instead of
+      // minting a second grant.
+      const [r] = await tx
+        .update(accessRequests)
+        .set({
+          status: "approved",
+          respondedAt: new Date(),
+          patientResponseReason: input.reason ?? null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(accessRequests.id, input.requestId),
+            inArray(accessRequests.status, ["submitted", "patient_viewed"]),
+          ),
+        )
+        .returning();
+      if (!r) throw new Error("Request is not awaiting a decision (status changed).");
+      return { grant: g!, row: r };
     });
-
-    const [row] = await db
-      .update(accessRequests)
-      .set({
-        status: "approved",
-        respondedAt: new Date(),
-        patientResponseReason: input.reason ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(accessRequests.id, input.requestId))
-      .returning();
 
     await audit.record({
       actorId: input.patientUserId,

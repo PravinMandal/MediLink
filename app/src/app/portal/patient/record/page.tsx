@@ -130,23 +130,24 @@ async function TimelineSection({
   kind?: string;
   corrected?: string;
 }) {
-  let events = await records.timeline(patientId);
+  // Timeline + provenance + (optional) search fan out in parallel —
+  // they were sequential awaits, adding a full RTT each on mobile.
   const showCorrected = corrected === "1";
-
-  if (kind) events = events.filter((e) => e.kind === kind);
+  const query = q?.trim() || null;
+  const [allEvents, provenanceRows, hits] = await Promise.all([
+    records.timeline(patientId),
+    provenance.forPatient(patientId),
+    query ? search.inPatient(patientId, query, 30) : Promise.resolve([]),
+  ]);
+  let events = kind ? allEvents.filter((e) => e.kind === kind) : allEvents;
 
   // Text search: FTS over record content; hits are keyed by kind+recordId,
   // matching timeline events surface with their snippet as detail.
   let snippets = new Map<string, string>();
-  if (q?.trim()) {
-    const hits = await search.inPatient(patientId, q.trim(), 30);
+  if (query) {
     snippets = new Map(hits.map((h) => [`${h.recordType}-${h.recordId}`, h.snippet]));
     events = events.filter((e) => snippets.has(`${mapKind(e.kind)}-${e.id}`));
   }
-
-  // Batched provenance for chips/drawers: sealed versions when present,
-  // fallback descriptors from the rows' own provenance columns otherwise.
-  const provenanceRows = await provenance.forPatient(patientId);
   const items: ClinicalItem[] = events.map((e) => {
     const rt = resourceTypeFor(e.kind);
     const p = provenanceRows.get(e.id);
