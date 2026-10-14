@@ -26,6 +26,12 @@ import { eq } from "drizzle-orm";
 
 const tmpDbDir = mkdtempSync(join(tmpdir(), "medilink-p0-"));
 process.env.MEDILINK_PG_DIR = join(tmpDbDir, "db");
+// Explicit mock opt-in: production defaults to manual review.
+process.env.VERIFICATION_PROVIDER = "mock";
+// Explicit mock opt-in: production defaults to manual review.
+process.env.VERIFICATION_PROVIDER = "mock";
+// Explicit mock opt-in: production defaults to manual review.
+process.env.VERIFICATION_PROVIDER = "mock";
 
 const PASSWORD = "Password123!";
 
@@ -44,6 +50,7 @@ let audit: typeof import("../src/server/modules/audit/service").audit;
 let patientService: typeof import("../src/server/modules/patients/service").patientService;
 let consentService: typeof import("../src/server/modules/consent/service").consent;
 let identityMod: typeof import("../src/server/modules/identity/verification");
+let contradictionsMod: typeof import("../src/server/modules/ai/contradictions");
 
 let doctorId: string, patientUserId: string, adminId: string;
 let doctorPractitionerId: string;
@@ -80,6 +87,7 @@ beforeAll(async () => {
   ({ patientService } = await import("../src/server/modules/patients/service"));
   ({ consent: consentService } = await import("../src/server/modules/consent/service"));
   identityMod = await import("../src/server/modules/identity/verification");
+  contradictionsMod = await import("../src/server/modules/ai/contradictions");
 
   doctorId = await signUp("p0.doctor@test.local", "Dr. P0", "doctor");
   patientUserId = await signUp("p0.patient@test.local", "P0 Patient", "patient");
@@ -474,8 +482,12 @@ describe("Immutable record versions", () => {
   });
 
   it("disputes flag the current version without rewriting it", async () => {
+    const [condRow] = await db
+      .insert(schema.conditions)
+      .values({ patientId, name: "Hypertension" })
+      .returning();
     const res = await versions.recordVersions.seal({
-      resourceId: "cond-test-1",
+      resourceId: condRow!.id,
       resourceType: "condition",
       patientId,
       payload: { name: "Hypertension" },
@@ -485,20 +497,97 @@ describe("Immutable record versions", () => {
       patientId,
       raisedBy: patientUserId,
       resourceType: "condition",
-      resourceId: "cond-test-1",
+      resourceId: condRow!.id,
       reason: "This is not my diagnosis",
     });
     expect(dispute!.status).toBe("open");
+    // The version row is NEVER rewritten by a dispute: "disputed" is derived
+    // at read time from open disputes. Terminal states (superseded /
+    // entered_in_error) must survive a raise + resolve cycle intact.
     const v = await versions.recordVersions.byId(res.versionId);
-    expect(v!.lifecycleStatus).toBe("disputed");
+    expect(v!.lifecycleStatus).toBe("active");
     // Payload untouched
     expect((v!.payload as { name: string }).name).toBe("Hypertension");
+    // And the overlay reports it as disputed while the dispute is open.
+    const open = await versions.disputes.openForPatient(patientId);
+    expect(open.map((d) => d.resourceId)).toContain(condRow!.id);
+  });
+
+  it("disputes on another patient's chart are rejected", async () => {
+    const [otherCond] = await db
+      .insert(schema.conditions)
+      .values({ patientId: otherPatientId, name: "Asthma" })
+      .returning();
+    await expect(
+      versions.disputes.raise({
+        patientId,
+        raisedBy: patientUserId,
+        resourceType: "condition",
+        resourceId: otherCond!.id,
+        reason: "Trying to flag someone else's row",
+      }),
+    ).rejects.toThrow("Record not found on this chart.");
+  });
+
+  it("disputes resolve and clear from the open queue", async () => {
+    const [condRow] = await db
+      .insert(schema.conditions)
+      .values({ patientId, name: "Migraine" })
+      .returning();
+    const sealed = await versions.recordVersions.seal({
+      resourceId: condRow!.id,
+      resourceType: "condition",
+      patientId,
+      payload: { name: "Migraine" },
+      authoredById: doctorId,
+    });
+    const dispute = await versions.disputes.raise({
+      patientId,
+      raisedBy: patientUserId,
+      resourceType: "condition",
+      resourceId: condRow!.id,
+      reason: "Never had this diagnosed",
+    });
+    expect((await versions.disputes.openForPatient(patientId)).length).toBeGreaterThan(0);
+    await versions.disputes.resolve({
+      disputeId: dispute!.id,
+      resolvedBy: doctorId,
+      status: "resolved_rejected",
+      notes: "Confirmed in encounter notes.",
+    });
+    const stillOpen = await versions.disputes.openForPatient(patientId);
+    expect(stillOpen.find((d) => d.id === dispute!.id)).toBeUndefined();
+    // Version flag lifts once nothing open references the resource.
+    const after = await versions.recordVersions.byId(sealed.versionId);
+    expect(after!.lifecycleStatus).toBe("active");
   });
 
   it("canonicalize is deterministic regardless of key order", () => {
     expect(
       versions.canonicalize({ a: 1, b: { d: 4, c: [3, 2] } }),
     ).toBe(versions.canonicalize({ b: { c: [3, 2], d: 4 }, a: 1 }));
+  });
+
+  it("conflict reconciliation auto-closes what re-scans no longer show", async () => {
+    const mk = (criticality: string) =>
+      db
+        .insert(schema.allergies)
+        .values({ patientId, substance: "Reconcile-Test-Drug", criticality })
+        .returning();
+    const [a1] = await mk("low");
+    const [a2] = await mk("high");
+    await contradictionsMod.contradictionEngine.detect(patientId);
+    const open = await contradictionsMod.contradictionEngine.openFor(patientId);
+    const allergyConflict = open.find((c) => c.kind === "allergy");
+    expect(allergyConflict).toBeDefined();
+    // Correct one entry (supersede) → conflict no longer reproduces.
+    await db
+      .update(schema.allergies)
+      .set({ supersededById: a2!.id })
+      .where(eq(schema.allergies.id, a1!.id));
+    await contradictionsMod.contradictionEngine.detect(patientId);
+    const after = await contradictionsMod.contradictionEngine.openFor(patientId);
+    expect(after.find((c) => c.id === allergyConflict!.id)).toBeUndefined();
   });
 });
 
@@ -801,5 +890,219 @@ describe("Emergency card tokens", () => {
     ).rejects.toThrow("ACCESS_DENIED");
     expect(await emergencyCard.resolve("short-token")).toBeNull();
     expect(await emergencyCard.resolve("z".repeat(40))).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Regression: patient profile self-update validation (this audit)     */
+/* ------------------------------------------------------------------ */
+
+describe("Patient profile validation", () => {
+  it("rejects malformed ABHA, accepts 14 digits (stored digits-only)", async () => {
+    await expect(
+      patientService.updateSelf(patientUserId, patientId, { abhaNumber: "123" }),
+    ).rejects.toThrow("INVALID_ABHA");
+    await expect(
+      patientService.updateSelf(patientUserId, patientId, { abhaNumber: "12-34-abcd" }),
+    ).rejects.toThrow("INVALID_ABHA");
+    const updated = await patientService.updateSelf(patientUserId, patientId, {
+      abhaNumber: "91-2345-6789-0123",
+    });
+    expect(updated.abhaNumber).toBe("91234567890123");
+  });
+
+  it("rejects unknown blood groups, normalizes valid ones", async () => {
+    await expect(
+      patientService.updateSelf(patientUserId, patientId, { bloodGroupSelfReported: "Z+" }),
+    ).rejects.toThrow("INVALID_BLOOD_GROUP");
+    const updated = await patientService.updateSelf(patientUserId, patientId, {
+      bloodGroupSelfReported: "o+",
+    });
+    expect(updated.bloodGroupSelfReported).toBe("O+");
+  });
+
+  it("rejects oversized free-text fields and foreign records", async () => {
+    await expect(
+      patientService.updateSelf(patientUserId, patientId, { addressCity: "x".repeat(121) }),
+    ).rejects.toThrow("FIELD_TOO_LONG");
+    await expect(
+      patientService.updateSelf(patientUserId, otherPatientId, { addressCity: "Pune" }),
+    ).rejects.toThrow("ACCESS_DENIED");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Manual-review leg: pending queue + admin approve/reject (this audit) */
+/*                                                                     */
+/* The E2E script only exercises the default mock (auto-approve); the  */
+/* pending queue + reviewer decisions run under                        */
+/* VERIFICATION_PROVIDER=manual_review and are pinned here. The env    */
+/* switch is scoped to these tests so later files keep auto-approve.   */
+/* ------------------------------------------------------------------ */
+
+describe("Manual verification review", () => {
+  it("queues submissions as pending and approves them", async () => {
+    const prev = process.env.VERIFICATION_PROVIDER;
+    process.env.VERIFICATION_PROVIDER = "manual_review";
+    try {
+      const res = await auth.api.signUpEmail({
+        body: { email: "pending.doc@test.local", password: PASSWORD, name: "Dr. Pending" },
+      } as never);
+      const userId = (res as unknown as { user: { id: string } }).user.id;
+      await db
+        .update(schema.user)
+        .set({ role: "doctor" })
+        .where(eq(schema.user.id, userId));
+      const sub = await identityMod.submitPractitionerVerification({
+        userId,
+        fullName: "Dr. Pending",
+        registrationNumber: "PEND/2026/001",
+        council: "Test Council",
+      });
+      expect(sub.practitioner.verificationStatus).toBe("pending");
+      const pending = await identityMod.listPendingPractitioners();
+      expect(pending.map((p) => p.id)).toContain(sub.practitioner.id);
+
+      await identityMod.reviewPractitionerVerification({
+        reviewerId: adminId,
+        practitionerId: sub.practitioner.id,
+        approve: true,
+        notes: "Credentials check out.",
+      });
+      const [row] = await db
+        .select({ status: schema.practitioners.verificationStatus })
+        .from(schema.practitioners)
+        .where(eq(schema.practitioners.id, sub.practitioner.id));
+      expect(row?.status).toBe("verified");
+      const after = await identityMod.listPendingPractitioners();
+      expect(after.map((p) => p.id)).not.toContain(sub.practitioner.id);
+    } finally {
+      if (prev === undefined) delete process.env.VERIFICATION_PROVIDER;
+      else process.env.VERIFICATION_PROVIDER = prev;
+    }
+  });
+
+  it("rejects with notes and blocks unknown ids", async () => {
+    const prev = process.env.VERIFICATION_PROVIDER;
+    process.env.VERIFICATION_PROVIDER = "manual_review";
+    try {
+      const res = await auth.api.signUpEmail({
+        body: { email: "reject.doc@test.local", password: PASSWORD, name: "Dr. Reject" },
+      } as never);
+      const userId = (res as unknown as { user: { id: string } }).user.id;
+      await db
+        .update(schema.user)
+        .set({ role: "doctor" })
+        .where(eq(schema.user.id, userId));
+      const sub = await identityMod.submitPractitionerVerification({
+        userId,
+        fullName: "Dr. Reject",
+        registrationNumber: "PEND/2026/002",
+      });
+      await identityMod.reviewPractitionerVerification({
+        reviewerId: adminId,
+        practitionerId: sub.practitioner.id,
+        approve: false,
+        notes: "Registration not found in council records.",
+      });
+      const [row] = await db
+        .select({ status: schema.practitioners.verificationStatus })
+        .from(schema.practitioners)
+        .where(eq(schema.practitioners.id, sub.practitioner.id));
+      expect(row?.status).toBe("rejected");
+      await expect(
+        identityMod.reviewPractitionerVerification({
+          reviewerId: adminId,
+          practitionerId: "00000000-0000-0000-0000-000000000000",
+          approve: true,
+        }),
+      ).rejects.toThrow("Practitioner not found");
+    } finally {
+      if (prev === undefined) delete process.env.VERIFICATION_PROVIDER;
+      else process.env.VERIFICATION_PROVIDER = prev;
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Structured extraction is idempotent per document (this audit)       */
+/* A redelivered job after a post-commit crash must skip, never double */
+/* the extracted observations.                                         */
+/* ------------------------------------------------------------------ */
+
+describe("Structured extraction idempotency", () => {
+  it("writes observations once across redelivered runs", async () => {
+    const text = "Test Result Unit Reference\nHbA1c  7.2  %  4.0 - 5.6\nHemoglobin  13.1  g/dL  13.0 - 17.0";
+    const { documentId } = await pipelineV2.ingestDocumentV2({
+      patientId,
+      uploadedById: doctorId,
+      kind: "lab_report",
+      title: "Idempotent HbA1c",
+      mimeType: "text/plain",
+      bytes: new TextEncoder().encode(text),
+    });
+    // Text extraction first (the structured job reads textExtract).
+    for (let i = 0; i < 5; i++) {
+      const pass = await pipelineV2.runExtractionPass();
+      if (!pass.ran || pass.status === "done") break;
+    }
+    const { runStructuredExtraction } = await import(
+      "../src/server/modules/documents/structured-extraction"
+    );
+    const ctx = {
+      patientId,
+      userId: doctorId,
+      organizationId: null,
+      title: "Idempotent HbA1c",
+      kind: "lab_report",
+      recordedDate: "2026-03-01",
+    };
+    const first = await runStructuredExtraction(documentId, ctx);
+    expect(first.labs).toBeGreaterThan(0);
+    const second = await runStructuredExtraction(documentId, ctx);
+    expect(second.skipped).toBe("already extracted");
+    const rows = await db
+      .select({ id: schema.observations.id })
+      .from(schema.observations)
+      .where(eq(schema.observations.sourceDocumentId, documentId));
+    expect(rows.length).toBe(first.labs as number);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Verification resubmission updates in place (this audit)             */
+/* Rejected doctors must be able to resubmit (the rejection UI tells   */
+/* them to); grants keyed by practitioner id must survive.             */
+/* ------------------------------------------------------------------ */
+
+describe("Verification resubmission", () => {
+  it("updates the single practitioner row instead of duplicating", async () => {
+    const res = await auth.api.signUpEmail({
+      body: { email: "resubmit.doc@test.local", password: PASSWORD, name: "Dr. First" },
+    } as never);
+    const userId = (res as unknown as { user: { id: string } }).user.id;
+    await db
+      .update(schema.user)
+      .set({ role: "doctor" })
+      .where(eq(schema.user.id, userId));
+    const first = await identityMod.submitPractitionerVerification({
+      userId,
+      fullName: "Dr. First",
+      registrationNumber: "MMC/2020/11111",
+      council: "Test Council",
+    });
+    const again = await identityMod.submitPractitionerVerification({
+      userId,
+      fullName: "Dr. Corrected",
+      registrationNumber: "MMC/2020/11111",
+      council: "Test Council",
+    });
+    expect(again.practitioner.id).toBe(first.practitioner.id);
+    expect(again.practitioner.fullName).toBe("Dr. Corrected");
+    const rows = await db
+      .select({ id: schema.practitioners.id })
+      .from(schema.practitioners)
+      .where(eq(schema.practitioners.userId, userId));
+    expect(rows.length).toBe(1);
   });
 });

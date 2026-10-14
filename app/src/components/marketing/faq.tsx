@@ -45,6 +45,7 @@ export function FaqAccordion({ items }: { items: Array<[string, string]> }) {
                 role="region"
                 aria-labelledby={`faq-button-${i}`}
                 className="faq-panel"
+                inert={!isOpen}
               >
                 <div className="faq-inner">
                   <p className="px-5 pb-4 text-[13.5px] leading-relaxed text-ink-soft">{a}</p>

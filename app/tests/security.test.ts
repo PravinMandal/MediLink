@@ -23,6 +23,15 @@ import { eq } from "drizzle-orm";
 
 const tmpDbDir = mkdtempSync(join(tmpdir(), "medilink-test-"));
 process.env.MEDILINK_PG_DIR = join(tmpDbDir, "db");
+// Explicit mock opt-in: production defaults to manual review, and these
+// fixtures rely on mock auto-approval for practitioner verification.
+process.env.VERIFICATION_PROVIDER = "mock";
+// Explicit mock opt-in: production defaults to manual review, and these
+// fixtures rely on mock auto-approval for practitioner verification.
+process.env.VERIFICATION_PROVIDER = "mock";
+// Explicit mock opt-in: production defaults to manual review, and these
+// fixtures rely on mock auto-approval for practitioner verification.
+process.env.VERIFICATION_PROVIDER = "mock";
 
 let db: typeof import("../src/server/db").db;
 let auth: typeof import("../src/server/auth").auth;
@@ -839,5 +848,73 @@ describe("Imaging scope mapping (H1)", () => {
     const { OFFERED_SCOPES, ALL_SCOPES } = await import("../src/server/modules/consent/service");
     expect(OFFERED_SCOPES).not.toContain("sensitive");
     expect(ALL_SCOPES).not.toContain("sensitive");
+  });
+});
+
+describe("Verification-gated policy (P0: existence is not trust)", () => {
+  it("denies an unverified doctor even with an active consent grant", async () => {
+    const pendingDoctorId = await signUp("pending.doctor@test.local", "Dr. Pending", "doctor");
+    // Practitioner row exists but verification never completed.
+    const [row] = await db
+      .insert(schema.practitioners)
+      .values({
+        userId: pendingDoctorId,
+        fullName: "Dr. Pending",
+        registrationNumber: "MMC/2099/99999",
+        council: "Maharashtra Medical Council",
+        verificationStatus: "pending",
+      })
+      .returning();
+    await consentService.grant({
+      patientId: patientAId,
+      patientUserId: patientAUserId,
+      granteeType: "practitioner",
+      granteePractitionerId: row.id,
+      scopes: ["conditions"],
+      purpose: "treatment",
+      days: 7,
+    });
+    const decision = await access.check(
+      { id: pendingDoctorId, role: "doctor" },
+      patientAId,
+      "conditions",
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.via).toBeNull();
+  });
+
+  it("denies staff of an unverified organization even with an org grant", async () => {
+    const pendingOrg = await createOrganization({
+      createdByUserId: adminId,
+      name: "Pending Labs",
+      type: "lab",
+      city: "Mumbai",
+    });
+    // Force pending regardless of the mock provider's decision.
+    await db
+      .update(schema.organizations)
+      .set({ verificationStatus: "pending" })
+      .where(eq(schema.organizations.id, pendingOrg.organization.id));
+    const stafferId = await signUp("pending.lab@test.local", "Pending Tech", "lab_staff");
+    await db
+      .update(schema.user)
+      .set({ organizationId: pendingOrg.organization.id })
+      .where(eq(schema.user.id, stafferId));
+    await consentService.grant({
+      patientId: patientAId,
+      patientUserId: patientAUserId,
+      granteeType: "organization",
+      granteeOrganizationId: pendingOrg.organization.id,
+      scopes: ["lab_results"],
+      purpose: "treatment",
+      days: 7,
+    });
+    const decision = await access.check(
+      { id: stafferId, role: "lab_staff", organizationId: pendingOrg.organization.id },
+      patientAId,
+      "lab_results",
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.via).toBeNull();
   });
 });

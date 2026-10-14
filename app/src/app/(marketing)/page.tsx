@@ -18,7 +18,7 @@ import {
   Stethoscope,
 } from "lucide-react";
 import { LandingHero } from "@/components/marketing/landing-hero";
-import { ChainSection } from "@/components/marketing/chain-section";
+import { VaultAct } from "@/components/marketing/vault-act";
 import { FaqAccordion } from "@/components/marketing/faq";
 import { Reveal } from "@/components/marketing/reveal";
 import { LogoMark } from "@/components/logo-mark";
@@ -199,8 +199,8 @@ export default function MarketingPage() {
                     <span className="num rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-faint">+ sensitive — not requested</span>
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <span className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-gradient-to-b from-pine to-pine-deep text-sm font-semibold text-on-pine">Grant selected</span>
-                    <span className="inline-flex h-10 items-center justify-center rounded-xl border border-line-strong px-5 text-sm font-semibold text-ink-soft">Decline</span>
+                    <Link href="/sign-up" className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-gradient-to-b from-pine to-pine-deep text-sm font-semibold text-on-pine">Grant selected</Link>
+                    <Link href="/sign-up" className="inline-flex h-10 items-center justify-center rounded-xl border border-line-strong px-5 text-sm font-semibold text-ink-soft">Decline</Link>
                   </div>
                 </div>
               </div>
@@ -222,8 +222,8 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* ---------------- Chain: a record, followed ---------------- */}
-      <ChainSection />
+      {/* ---------------- Vault act: 3D scrollytelling ---------------- */}
+      <VaultAct />
 
       {/* ---------------- Journey steps ---------------- */}
       <section id="how" aria-label="How MediLink works" className="scroll-mt-20 border-y border-line bg-paper-sunk/40 py-20 sm:py-28">

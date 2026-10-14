@@ -101,23 +101,24 @@ const MOBILE = { width: 375, height: 667 };
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   );
   record("marketing desktop no h-overflow", !overflowD);
-  // 3D section present and lazy (matched by its heading copy)
+  // Vault act present (3D scrollytelling; static cards when reduced-motion)
   const journey = page.getByRole("heading", { name: /lab report|chain/i }).first();
-  record("record-journey section in DOM", (await journey.count()) > 0);
+  record("chain section in DOM", (await journey.count()) > 0);
   await page.screenshot({ path: "shots/verify-marketing-desktop.png", fullPage: true });
 
-  // scroll through the journey to exercise the canvas
+  // scroll through the vault act — captions must cross-fade per beat
   if ((await journey.count()) > 0) await journey.scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
   for (let i = 0; i < 8; i++) {
     await page.mouse.wheel(0, 400);
     await page.waitForTimeout(120);
   }
-  record("canvas mounted (3D active)", (await page.locator("canvas").count()) > 0);
+  const beatVisible = await page.getByText(/Beat 0[1-4] ·/).count();
+  record("vault act beats in DOM", beatVisible >= 4);
   const overflowJ = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   );
-  record("no h-overflow during journey", !overflowJ);
+  record("no h-overflow during chain", !overflowJ);
   await page.close();
 }
 
@@ -164,13 +165,14 @@ const demoLogin = async (page, email, password) => {
   if (doctorIn) {
     await page.waitForTimeout(1200);
     await page.screenshot({ path: "shots/verify-doctor-home.png", fullPage: true });
-    // patient search
-    const search = page.locator('input[name="q"], input[type="search"]').first();
-    if ((await search.count()) > 0) {
-      await search.fill("Rahul");
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(1500);
-      record("doctor patient search finds Rahul", (await page.getByText(/Rahul/i).count()) > 0);
+    // Identifier lookup (privacy by design: Patient ID / ABHA only — there is
+    // intentionally NO name/phone directory search on this page).
+    const nameSearch = page.locator('input[name="q"], input[type="search"]').first();
+    record("doctor home has no name/phone directory search", (await nameSearch.count()) === 0);
+    const lookup = page.locator('input[name="identifier"]').first();
+    record("doctor identifier lookup present", (await lookup.count()) > 0);
+    if ((await lookup.count()) > 0) {
+      // Workspace lists only consented patients — open the seeded grant.
       const link = page.locator('a[href*="/portal/doctor/patients/"]').first();
       if ((await link.count()) > 0) {
         await link.click();
@@ -231,6 +233,13 @@ const demoLogin = async (page, email, password) => {
     for (const sub of ["consents", "documents", "timeline", "access-history", "emergency", "profile"]) {
       await page.goto(base + "/portal/patient/" + sub, { waitUntil: "networkidle" }).catch(() => {});
       await page.waitForTimeout(600);
+      if (sub === "timeline") {
+        // /timeline is a redirect stub into the record hub — assert the
+        // client-side bounce lands on /record (shell-only SSR is expected).
+        await page.waitForURL(/\/portal\/patient\/record/, { timeout: 8000 }).catch(() => {});
+        record("patient /timeline redirects to record hub", /\/portal\/patient\/record/.test(page.url()), page.url());
+        continue;
+      }
       const ok = (await page.locator("main").count()) > 0;
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
@@ -263,6 +272,22 @@ const demoLogin = async (page, email, password) => {
   await page.close();
 }
 
+/* ---------- Wrong-role gates (clinician tooling never renders for patients) ---------- */
+{
+  const page = await fresh(DESKTOP);
+  const patientIn = await demoLogin(page, "rahul@example.com", "Password123!");
+  if (patientIn) {
+    for (const gated of ["/portal/doctor/emergency", "/portal/doctor/inbox", "/portal/doctor/patients"]) {
+      await page.goto(base + gated, { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForURL((u) => !u.href.includes("/portal/doctor/"), { timeout: 8000 }).catch(() => {});
+      record(`patient bounced from ${gated}`, page.url().includes("/portal/patient"), page.url());
+    }
+  } else {
+    record("wrong-role gate setup (patient login)", false, page.url());
+  }
+  await page.close();
+}
+
 /* ---------- Admin ---------- */
 {
   const page = await fresh(DESKTOP);
@@ -271,7 +296,9 @@ const demoLogin = async (page, email, password) => {
   if (adminIn) {
     await page.waitForTimeout(1000);
     // Notification bell present in portal header (both viewports exercised via patient above)
-    const bell = page.locator('button[aria-expanded][aria-label^="Notifications"]');
+    // Two bells render in the DOM (mobile top bar + desktop bar, one hidden
+    // by breakpoint) — scope to the visible one.
+    const bell = page.locator('button[aria-expanded][aria-label^="Notifications"]:visible');
     const bellCount = await bell.count();
     if (bellCount) {
       await bell.click();
@@ -283,15 +310,19 @@ const demoLogin = async (page, email, password) => {
     } else {
       record("notification bell opens panel", false, "bell not found");
     }
-    // Break-glass notified states render unambiguously
+    // Break-glass notified states render unambiguously — check on the review
+    // page itself, where the seeded decided event lives (overview has none).
+    await page.goto(base + "/portal/admin/emergency", { waitUntil: "networkidle" }).catch(() => {});
+    await page.waitForTimeout(800);
     const notifiedText = await page.evaluate(() => {
-      const el = [...document.querySelectorAll("li")].find((n) => /notified|notification pending|no patient account/.test(n.textContent ?? ""));
-      return el ? el.textContent ?? "" : null;
+      const els = [...document.querySelectorAll("li")].filter((n) => /notified|notification pending|no patient account/i.test(n.textContent ?? ""));
+      const bad = els.find((n) => /notified\s+—\s*$/m.test(n.textContent ?? ""));
+      return { rows: els.length, bad: bad ? (bad.textContent ?? "").slice(0, 80) : null };
     });
     record(
       "break-glass notified state explicit",
-      notifiedText === null || !/notified\s+—\s*$/m.test(notifiedText),
-      (notifiedText ?? "no event rows").slice(0, 80),
+      notifiedText.rows > 0 && !notifiedText.bad,
+      `rows=${notifiedText.rows}${notifiedText.bad ? " bad=" + notifiedText.bad : ""}`,
     );
     await page.screenshot({ path: "shots/verify-admin.png", fullPage: true });
   }

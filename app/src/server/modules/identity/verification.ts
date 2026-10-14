@@ -75,12 +75,18 @@ export const ManualReviewProvider: VerificationProvider = {
 };
 
 export function getVerificationProvider(): VerificationProvider {
+  // Fail closed: production defaults to manual review. The mock provider
+  // auto-approves reg.length >= 4 and must be opted into explicitly
+  // (local dev / demo / tests only) — never by accident.
   switch (process.env.VERIFICATION_PROVIDER) {
-    case "manual_review":
-      return ManualReviewProvider;
     case "mock":
-    default:
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("VERIFICATION_PROVIDER=mock is forbidden in production.");
+      }
       return MockVerificationProvider;
+    case "manual_review":
+    default:
+      return ManualReviewProvider;
   }
 }
 
@@ -111,22 +117,47 @@ export async function submitPractitionerVerification(input: {
 }) {
   const provider = getVerificationProvider();
   const decision = await provider.verifyPractitioner(input);
+  const status =
+    decision.outcome === "auto_approved" ? "verified" : "pending";
 
-  const [practitioner] = await db
-    .insert(practitioners)
-    .values({
-      userId: input.userId,
-      organizationId: input.organizationId ?? null,
-      fullName: input.fullName,
-      registrationNumber: input.registrationNumber,
-      council: input.council,
-      qualification: input.qualification,
-      specialty: input.specialty,
-      verificationStatus:
-        decision.outcome === "auto_approved" ? "verified" : "pending",
-      verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
-    })
-    .returning();
+  // Resubmission updates the single practitioner row in place (userId is
+  // unique): rejected doctors can resubmit corrected details as the UI
+  // promises, and consent grants (keyed by practitioner id) survive.
+  // New claims re-enter review — verified access pauses until re-approved.
+  const [existing] = await db
+    .select({ id: practitioners.id })
+    .from(practitioners)
+    .where(eq(practitioners.userId, input.userId));
+  const [practitioner] = existing
+    ? await db
+        .update(practitioners)
+        .set({
+          organizationId: input.organizationId ?? null,
+          fullName: input.fullName,
+          registrationNumber: input.registrationNumber,
+          council: input.council,
+          qualification: input.qualification,
+          specialty: input.specialty,
+          verificationStatus: status,
+          verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
+          verifiedBy: null,
+        })
+        .where(eq(practitioners.id, existing.id))
+        .returning()
+    : await db
+        .insert(practitioners)
+        .values({
+          userId: input.userId,
+          organizationId: input.organizationId ?? null,
+          fullName: input.fullName,
+          registrationNumber: input.registrationNumber,
+          council: input.council,
+          qualification: input.qualification,
+          specialty: input.specialty,
+          verificationStatus: status,
+          verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
+        })
+        .returning();
 
   await db.insert(practitionerVerifications).values({
     practitionerId: practitioner.id,
@@ -154,7 +185,11 @@ export async function submitPractitionerVerification(input: {
     action: "practitioner.verification.submitted",
     resourceType: "practitioner",
     resourceId: practitioner.id,
-    metadata: { provider: provider.name, outcome: decision.outcome },
+    metadata: {
+      provider: provider.name,
+      outcome: decision.outcome,
+      resubmission: Boolean(existing),
+    },
   });
 
   return { practitioner, decision };

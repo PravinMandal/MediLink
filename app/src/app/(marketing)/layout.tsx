@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LogoMark } from "@/components/logo-mark";
 import "@/components/marketing/landing.css";
+import { SmoothScroll } from "@/components/marketing/smooth-scroll";
 
 const FOOT_COLS: Array<{ title: string; links: Array<[string, string]> }> = [
   {
@@ -40,6 +41,7 @@ export default function MarketingLayout({
 }) {
   return (
     <div className="min-h-dvh bg-paper">
+      <SmoothScroll />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:border focus:border-[#6fa8ff] focus:bg-[#0d1424] focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white"

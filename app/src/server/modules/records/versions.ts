@@ -108,13 +108,12 @@ export const recordVersions = {
           sourceDocumentId: input.sourceDocumentId ?? null,
           pageRefs: input.pageRefs ?? null,
           reviewState: input.reviewState ?? "not_required",
-          reviewedBy: input.reviewState === "human_reviewed" || input.reviewState === "attested"
-            ? input.authoredById
-            : null,
-          reviewedAt:
-            input.reviewState === "human_reviewed" || input.reviewState === "attested"
-              ? new Date()
-              : null,
+          // Self-authorship is never independent review: reviewedBy stays
+          // null until a DIFFERENT verified party reviews. Callers must pass
+          // reviewState "authored" for self-writes; "attested" requires the
+          // separate attestations row (see input.attestedBy below).
+          reviewedBy: null,
+          reviewedAt: null,
         })
         .returning();
 
@@ -247,6 +246,27 @@ export const disputes = {
     if (input.reason.trim().length < 5) {
       throw new Error("Describe what is wrong so it can be reviewed.");
     }
+    // Chart scoping: the flagged resource must belong to this patient's
+    // chart — otherwise one patient could mark another patient's records
+    // disputed by guessing row ids. One UNION ALL over the clinical tables
+    // (single round trip; version rows alone don't cover ordinary writes).
+    const { sql } = await import("drizzle-orm");
+    const ownerRes = (await db.execute(sql`
+      SELECT patient_id FROM conditions WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM allergies WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM medication_statements WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM observations WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM procedures WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM immunizations WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM encounters WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM diagnostic_reports WHERE id = ${input.resourceId}
+      UNION ALL SELECT patient_id FROM documents WHERE id = ${input.resourceId}
+      LIMIT 1
+    `)) as unknown as { rows: Array<{ patient_id: string }> };
+    const ownerRow = ownerRes.rows[0];
+    if (!ownerRow || ownerRow.patient_id !== input.patientId) {
+      throw new Error("Record not found on this chart.");
+    }
     const [row] = await db
       .insert(dataDisputes)
       .values({
@@ -257,19 +277,11 @@ export const disputes = {
         reason: input.reason.trim(),
       })
       .returning();
-    // Flag the version as disputed so UIs show a warning in critical bands.
-    const [version] = await db
-      .select({ id: clinicalResourceVersions.id })
-      .from(clinicalResourceVersions)
-      .where(eq(clinicalResourceVersions.resourceId, input.resourceId))
-      .orderBy(desc(clinicalResourceVersions.version))
-      .limit(1);
-    if (version) {
-      await db
-        .update(clinicalResourceVersions)
-        .set({ lifecycleStatus: "disputed" })
-        .where(eq(clinicalResourceVersions.id, version.id));
-    }
+    // NOTE: the version row's lifecycleStatus is intentionally left alone.
+    // "Disputed" is derived at read time from open disputes (see
+    // provenance.ts disputedResourceIds overlay). Overwriting the row here
+    // used to destroy terminal states (superseded/entered_in_error) with no
+    // way to restore them on resolve.
     await audit.record({
       actorId: input.raisedBy,
       actorRole: "patient",
@@ -317,6 +329,10 @@ export const disputes = {
         reason: input.status,
         metadata: { notes: input.notes ?? null },
       });
+      // No version-row write on resolve either: the "under review" badge
+      // is derived from open disputes at read time, so closing the last
+      // open dispute lifts it automatically. The dispute row + audit keep
+      // the full trace.
     }
     return row;
   },

@@ -96,8 +96,8 @@ export function LandingHero() {
               ))}
             </div>
             <div className="mt-4 flex gap-2">
-              <span className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-gradient-to-b from-[#4d8dff] to-[#1a56c4] text-sm font-semibold text-white shadow-lg">Grant selected</span>
-              <span className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 px-5 text-sm font-semibold text-[#c9d6ee]">Decline</span>
+              <Link href="/sign-up" className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-gradient-to-b from-[#4d8dff] to-[#1a56c4] text-sm font-semibold text-white shadow-lg">Grant selected</Link>
+              <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 px-5 text-sm font-semibold text-[#c9d6ee]">Decline</Link>
             </div>
             <div className="absolute -bottom-5 -left-4 flex items-center gap-2 rounded-2xl border border-white/15 bg-[#0d1424]/95 px-4 py-3 shadow-2xl backdrop-blur-xl sm:-left-8">
               <FileCheck2 size={16} aria-hidden className="shrink-0 text-[#6fa8ff]" />
@@ -118,9 +118,9 @@ export function LandingHero() {
               ["100%", "cited AI claims"],
               ["0", "reads without consent"],
             ].map(([num, label]) => (
-              <div key={label} className="px-3 py-4 text-center sm:py-5 lg:pl-6 lg:text-left">
-                <dd className="num text-xl font-bold tracking-tight text-white sm:text-2xl">{num}</dd>
-                <dt className="num mt-0.5 text-[9.5px] uppercase tracking-wider text-[#7d8aa0] sm:text-[10.5px]">{label}</dt>
+              <div key={label} className="flex flex-col px-3 py-4 text-center sm:py-5 lg:pl-6 lg:text-left">
+                <dt className="num order-2 mt-0.5 text-[9.5px] uppercase tracking-wider text-[#7d8aa0] sm:text-[10.5px]">{label}</dt>
+                <dd className="num order-1 text-xl font-bold tracking-tight text-white sm:text-2xl">{num}</dd>
               </div>
             ))}
           </dl>

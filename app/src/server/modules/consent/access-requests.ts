@@ -153,13 +153,15 @@ export const accessRequestsService = {
 
   /** Patient opens the request — transitions submitted -> patient_viewed. */
   async markViewed(patientUserId: string, requestId: string) {
+    // Ownership is asserted BEFORE the write, and the write itself is
+    // status-guarded (submitted-only): a replay or a forged requestId
+    // flips nothing and throws nothing observable.
     const [req] = await db
       .select({ patientId: accessRequests.patientId })
       .from(accessRequests)
       .where(eq(accessRequests.id, requestId));
-    if (req) {
-      await this.assertOwnership(patientUserId, req.patientId);
-    }
+    if (!req) return;
+    await this.assertOwnership(patientUserId, req.patientId);
     await db
       .update(accessRequests)
       .set({ status: "patient_viewed", patientViewedAt: new Date(), updatedAt: new Date() })
@@ -205,7 +207,7 @@ export const accessRequestsService = {
       await audit.record({
         actorId: input.patientUserId,
         actorRole: "patient",
-        patientId: input.patientId,
+        patientId: req.patientId,
         action: "access_request.declined",
         resourceType: "access_request",
         resourceId: input.requestId,
@@ -225,16 +227,23 @@ export const accessRequestsService = {
       (OFFERED_SCOPES as string[]).includes(s),
     );
     if (!scopes.length) throw new Error("Select at least one category to grant.");
+    // NaN-safe duration: NaN ?? x stays NaN, so validate explicitly —
+    // otherwise expiresAt becomes Invalid Date and the grant is immortal.
+    const wanted = Number(input.days ?? req.requestedDays);
+    if (!Number.isFinite(wanted)) throw new Error("Invalid grant duration.");
     const days = Math.min(
-      Math.max(input.days ?? req.requestedDays, MIN_REQUEST_DAYS),
-      req.requestedDays,
+      Math.max(Math.floor(wanted), MIN_REQUEST_DAYS),
+      Math.min(req.requestedDays, MAX_REQUEST_DAYS),
     );
+    // The grant, audit, and artefact all bind to the DB-owned patient id —
+    // never the caller-supplied input.patientId (ownership poisoning).
+    const patientId = req.patientId;
 
     // Create the consent grant tied to the request.
     const [grant] = await db
       .insert(consents)
       .values({
-        patientId: input.patientId,
+        patientId,
         granteeType: req.requesterPractitionerId ? "practitioner" : "organization",
         granteePractitionerId: req.requesterPractitionerId,
         granteeOrganizationId: req.requesterOrganizationId,
@@ -271,7 +280,7 @@ export const accessRequestsService = {
         grantedAt: grant.grantedAt.toISOString(),
         expiresAt: grant.expiresAt.toISOString(),
       },
-      patient: { patientId: input.patientId },
+      patient: { patientId },
     };
     await db.insert(consentArtifacts).values({
       consentId: grant.id,
@@ -296,7 +305,7 @@ export const accessRequestsService = {
     await audit.record({
       actorId: input.patientUserId,
       actorRole: "patient",
-      patientId: input.patientId,
+      patientId,
       action: "access_request.approved",
       resourceType: "consent",
       resourceId: grant.id,
