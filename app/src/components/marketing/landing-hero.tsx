@@ -26,7 +26,7 @@ export function LandingHero() {
           section is already centered in the space BELOW the sticky header
           (min-h minus the h-16 bar), so pt-32/pt-36 double-counted and left
           a ~240px dead gap at wide viewports. */}
-      <div className="relative z-10 mx-auto grid w-full max-w-7xl items-center gap-14 px-5 pb-20 pt-12 sm:px-8 lg:grid-cols-[1.02fr_0.98fr] lg:pb-24 lg:pt-16">
+      <div className="relative z-10 mx-auto grid w-full max-w-7xl items-center gap-14 px-5 pb-20 pt-5 sm:px-8 lg:grid-cols-[1.02fr_0.98fr] lg:pb-24 lg:pt-[35px]">
         <div className="max-w-2xl text-center lg:text-left">
           <p className="rise rise-1 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.06] py-1.5 pl-2 pr-4 text-[12px] font-medium text-[#c9d6ee] backdrop-blur-xl">
             <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-b from-[#4d8dff] to-[#1a56c4] px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-white">

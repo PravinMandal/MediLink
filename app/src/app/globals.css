@@ -633,33 +633,32 @@ body {
 /* document.startViewTransition(); unsupported browsers fall back to the    */
 /* instant swap (no flash — the pre-hydration script already set the mode). */
 /* ------------------------------------------------------------------------- */
-::view-transition-old(root),
-::view-transition-new(root) {
-  /* 420ms felt like a strobe on full-page theme swaps (the whole viewport
-     repaints, not a small panel). 220ms keeps the cinematic wipe readable
-     without the flicker. */
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+/* The transition root paints UNDER both snapshots: the UA default is a
+   white canvas, so any translucency in the snapshots (e.g. fading the old
+   one out) flashes white mid-swap — the split-second flicker. Keep the root
+   on the app canvas and never fade the old snapshot. */
+::view-transition {
+  background: var(--surface-canvas);
 }
 
 ::view-transition-old(root) {
-  animation-name: theme-fade-out;
+  animation: none;
 }
 
 ::view-transition-new(root) {
-  animation-name: theme-wipe-in;
-  clip-path: circle(0px at var(--theme-x, 50%) var(--theme-y, 0%));
+  /* Dissolve, not a wipe: the circular wipe started from the navbar corner
+     and swept the whole viewport after a ~150ms frozen-frame setup — it read
+     as a glitch, not a transition. A short cross-fade has no origin point,
+     no setup freeze visible, and can't flash. */
+  animation: theme-fade-in 280ms ease-out;
 }
 
-@keyframes theme-fade-out {
-  to {
-    opacity: 0.4;
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
   }
-}
-
-@keyframes theme-wipe-in {
   to {
-    clip-path: circle(150vmax at var(--theme-x, 50%) var(--theme-y, 0%));
+    opacity: 1;
   }
 }
 

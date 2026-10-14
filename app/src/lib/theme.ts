@@ -30,15 +30,12 @@ export function storedThemeChoice(): ThemeChoice {
 }
 
 /**
- * Cinematic swap: circular wipe from the click point, instant fallback when
- * view transitions are unavailable or the user prefers reduced motion.
+ * Theme swap through a view-transition cross-fade (see globals.css), instant
+ * fallback when view transitions are unavailable or the user prefers reduced
+ * motion. The click point is accepted but ignored — the dissolve has no
+ * origin — so callers keep their signatures.
  */
-export function cinematicApply(fn: () => void, e?: { clientX: number; clientY: number }): void {
-  const root = document.documentElement;
-  if (e) {
-    root.style.setProperty("--theme-x", `${e.clientX}px`);
-    root.style.setProperty("--theme-y", `${e.clientY}px`);
-  }
+export function cinematicApply(fn: () => void, _e?: { clientX: number; clientY: number }): void {
   const vt = (
     document as Document & { startViewTransition?: (fn: () => void) => unknown }
   ).startViewTransition;
