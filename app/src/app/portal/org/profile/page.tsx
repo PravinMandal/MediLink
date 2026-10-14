@@ -12,6 +12,10 @@ export const metadata: Metadata = {
 
 /** Org/lab profile: settings summary + one-click theme settings. */
 export default async function OrgProfilePage() {
+  // Every other portal page gates on role; this one rendered facility
+  // settings UI to anyone (the layout does not gate — pages must).
+  const { requireRole } = await import("@/server/session");
+  await requireRole("lab_staff", "org_admin");
   return (
     <>
       <PageHeader

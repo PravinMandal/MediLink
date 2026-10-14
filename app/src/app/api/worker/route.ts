@@ -139,14 +139,24 @@ export async function GET(request: Request) {
     // x-cron-secret header, or ?cronSecret= as a last resort for schedulers
     // that only support URL configuration. The secret VALUE is never logged;
     // Vercel access logs record that the endpoint was hit.
+    // The generic ?secret= alias was dropped: it collides with unrelated
+    // params and widens the leak surface (full URLs land in access logs).
+    const { timingSafeEqual } = await import("node:crypto");
+    const matches = (candidate: string | null): boolean => {
+      if (candidate === null) return false;
+      const a = Buffer.from(candidate);
+      const b = Buffer.from(secret);
+      // Length check first: timingSafeEqual throws on mismatched lengths,
+      // and a mismatch is a certain reject anyway.
+      return a.length === b.length && timingSafeEqual(a, b);
+    };
     const url = new URL(request.url);
     const auth = request.headers.get("authorization");
-    const headerSecret = request.headers.get("x-cron-secret");
-    const querySecret = url.searchParams.get("cronSecret") ?? url.searchParams.get("secret");
+    const bearer = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length) : null;
     const ok =
-      auth === `Bearer ${secret}` ||
-      headerSecret === secret ||
-      (querySecret !== null && querySecret === secret);
+      matches(bearer) ||
+      matches(request.headers.get("x-cron-secret")) ||
+      matches(url.searchParams.get("cronSecret"));
     if (!ok) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }

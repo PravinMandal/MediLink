@@ -83,15 +83,21 @@ export async function GET(
   ]);
   const inlineOk = INLINE_MIMES.has(doc.mimeType);
 
-  await audit.record({
-    actorId: user.id,
-    actorRole: user.role,
-    patientId: doc.patientId,
-    action: "document.viewed",
-    resourceType: "document",
-    resourceId: doc.id,
-    metadata: { via: decision.basisType, basisId: decision.basisId },
-  });
+  // Best-effort: an audit-chain write failure must not 500 an authorized
+  // read. Log loudly; the gap is detectable via the verify-chain action.
+  try {
+    await audit.record({
+      actorId: user.id,
+      actorRole: user.role,
+      patientId: doc.patientId,
+      action: "document.viewed",
+      resourceType: "document",
+      resourceId: doc.id,
+      metadata: { via: decision.basisType, basisId: decision.basisId },
+    });
+  } catch (err) {
+    console.error("[audit] write failed (document.viewed)", err);
+  }
 
   // Emergency basis: every read under an emergency event is separately
   // traceable (BuildPlan §7.12).

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/server/auth";
 import { portalHomeForRole } from "@/server/session";
+import { rateLimit, LIMITS } from "@/server/modules/security/rate-limit";
+import { safeNextOr } from "@/server/modules/security/redirect";
 import type { User } from "@/server/db/schema";
 
 export type FormState = { error?: string; ok?: string };
@@ -14,28 +16,42 @@ export type FormState = { error?: string; ok?: string };
  * platform admin — never through the public signup form or the auth API.
  */
 const SIGNUP_ROLES = new Set(["patient", "doctor"]);
-const SAFE_NEXT = /^\/[^/](.*)?$/; // "/" + non-slash start: blocks "//evil.com"
+// Safe post-login redirect lives in modules/security/redirect (single
+// definition shared with the sign-in page — never a local copy).
 
 function isRedirect(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return message?.includes("NEXT_REDIRECT");
 }
 
-async function roleForUser(userId?: string, email?: string): Promise<User["role"]> {
+/**
+ * Look up the post-login landing role. Fail CLOSED: on a DB error (or a
+ * missing row after a successful sign-in) return null and send the user to
+ * the patient portal — the per-page requireRole gates and session re-reads
+ * enforce the real role from there. The old catch-all defaulted to
+ * "patient", which is the same landing but hid outages; null makes the
+ * fallback explicit at the call site.
+ */
+async function roleForUser(userId?: string, email?: string): Promise<User["role"] | null> {
   try {
     const { db } = await import("@/server/db");
     const { user: userTable } = await import("@/server/db/schema");
     const { eq } = await import("drizzle-orm");
-    if (!userId && !email) return "patient";
+    if (!userId && !email) return null;
     const [row] = await db
       .select({ role: userTable.role })
       .from(userTable)
       .where(userId ? eq(userTable.id, userId) : eq(userTable.email, email!))
       .limit(1);
-    return row?.role ?? "patient";
+    return row?.role ?? null;
   } catch {
-    return "patient";
+    return null;
   }
+}
+
+/** Per-address throttle for credential-guessing endpoints (online resistance). */
+function authThrottled(email: string): boolean {
+  return rateLimit(`auth:${email.toLowerCase()}`, LIMITS.auth);
 }
 
 export async function signInAction(
@@ -47,15 +63,17 @@ export async function signInAction(
   const next = String(formData.get("next") ?? "");
 
   if (!email || !password) return { error: "Enter your email and password." };
+  // Uniform throttle message: throttled vs wrong-password must be
+  // indistinguishable, or the throttle becomes an existence oracle.
+  if (!authThrottled(email)) return { error: "Email or password is incorrect." };
 
   try {
     const res = (await auth.api.signInEmail({
       body: { email, password },
       headers: await headers(),
     } as never)) as { user?: { id?: string; email?: string } };
-    const role = await roleForUser(res.user?.id, res.user?.email ?? email);
-    if (next && SAFE_NEXT.test(next)) redirect(next);
-    redirect(portalHomeForRole(role));
+    const role = (await roleForUser(res.user?.id, res.user?.email ?? email)) ?? "patient";
+    redirect(safeNextOr(next, portalHomeForRole(role)));
   } catch (err) {
     if (isRedirect(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
@@ -92,6 +110,16 @@ export async function signUpAction(
   if (password.length < 8)
     return { error: "Password must be at least 8 characters." };
   if (!SIGNUP_ROLES.has(role)) return { error: "Choose a valid role." };
+  // Same per-address throttle as sign-in: without it, signup doubles as an
+  // unauthenticated existence oracle AND an unlimited account-creation pipe.
+  if (!authThrottled(email)) {
+    return { error: "Too many attempts. Wait a minute and try again." };
+  }
+  // Same per-address throttle as sign-in: without it, signup doubles as an
+  // unauthenticated existence oracle AND an unlimited account-creation pipe.
+  if (!authThrottled(email)) {
+    return { error: "Too many attempts. Wait a minute and try again." };
+  }
 
   let userId: string | undefined;
   try {
@@ -147,15 +175,20 @@ export async function resendVerificationAction(
 ): Promise<FormState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!email) return { error: "Enter your email." };
+  // Always succeed publicly (like forgotPasswordAction): the error path used
+  // to distinguish "no such account" from "mail sent" — an enumeration oracle.
+  if (!authThrottled(email)) {
+    return { ok: "If an account exists, a verification link is on its way." };
+  }
   try {
     await auth.api.sendVerificationEmail({
       body: { email, callbackURL: "/portal" },
     } as never);
-    return { ok: "Verification link sent — check your inbox (and spam)." };
   } catch (err) {
     if (isRedirect(err)) throw err;
-    return { error: "Could not send the link. Try again in a minute." };
+    // Swallowed deliberately — see above.
   }
+  return { ok: "If an account exists, a verification link is on its way." };
 }
 
 export async function forgotPasswordAction(
@@ -196,5 +229,9 @@ export async function resetPasswordAction(
 
 export async function signOutAction() {
   await auth.api.signOut({ headers: await headers() });
+  // The step-up marker is a second credential: leaving it behind on logout
+  // hands the next browser user a 15-minute privileged marker. Clear it.
+  const { cookies } = await import("next/headers");
+  (await cookies()).delete("medilink-stepup");
   redirect("/sign-in");
 }

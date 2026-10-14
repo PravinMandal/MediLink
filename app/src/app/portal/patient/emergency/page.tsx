@@ -24,8 +24,10 @@ export default async function EmergencyProfile() {
     records.currentAllergies(patient.id),
     records.currentMedications(patient.id),
     records.currentConditions(patient.id),
-    // Issue-or-rotate is idempotent per render; rotation revokes any earlier
-    // printed card so a lost one stops resolving the moment this renders.
+    // Issue-or-reuse: rendering NEVER rotates. A lost card is revoked only
+    // through the explicit Rotate button (rotateEmergencyCardAction) — a
+    // render-time rotation would silently invalidate every printed card on
+    // each visit.
     emergencyCard.issue(user.id, patient.id),
   ]);
   const cardToken = card.token;

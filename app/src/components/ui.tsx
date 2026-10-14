@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import { Children, cloneElement, isValidElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 
 /* ------------------------------------------------------------------ */
 /* Button                                                              */
@@ -143,7 +143,23 @@ export function Field({
           {error}
         </p>
       ) : null}
-      {children}
+      {error ? (
+        // Programmatic association: the error paragraph used to be visually
+        // adjacent but detached — screen readers never announced it. Clone
+        // the child control with aria-describedby + aria-invalid so the
+        // error is read on focus.
+        Children.map(children, (child) => {
+          if (!isValidElement(child)) return child;
+          const prev = (child.props as { "aria-describedby"?: string })["aria-describedby"];
+          const errorId = `${htmlFor ?? "field"}-error`;
+          return cloneElement(child as ReactElement<Record<string, unknown>>, {
+            "aria-describedby": prev ? `${prev} ${errorId}` : errorId,
+            "aria-invalid": true,
+          });
+        })
+      ) : (
+        children
+      )}
       {hint ? <p className="text-xs text-ink-faint">{hint}</p> : null}
     </div>
   );

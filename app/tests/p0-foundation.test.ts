@@ -866,7 +866,8 @@ describe("Consent revocation ownership", () => {
 
 describe("ABHA discovery sources", () => {
   it("finds a linked patient by their profile ABHA number", async () => {
-    const abha = "12345678901234";
+    // Verhoeff-valid fixture: lookup now checks the ABHA check digit.
+    const abha = "12345678901230";
     await db
       .update(schema.patients)
       .set({ abhaNumber: abha })
@@ -950,9 +951,9 @@ describe("Patient profile validation", () => {
       patientService.updateSelf(patientUserId, patientId, { abhaNumber: "12-34-abcd" }),
     ).rejects.toThrow("INVALID_ABHA");
     const updated = await patientService.updateSelf(patientUserId, patientId, {
-      abhaNumber: "91-2345-6789-0123",
+      abhaNumber: "91-2345-6789-0124",
     });
-    expect(updated.abhaNumber).toBe("91234567890123");
+    expect(updated.abhaNumber).toBe("91234567890124");
   });
 
   it("rejects unknown blood groups, normalizes valid ones", async () => {

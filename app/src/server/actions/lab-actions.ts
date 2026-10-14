@@ -363,10 +363,17 @@ export async function markUnableToVerifyAction(
   if (!doc || doc.kind !== "lab_report")
     return { error: "Document not found in your facility." };
 
-  await db
+  // Org predicate on the write itself, not just the read above: without
+  // it a concurrent org reassignment between orgDocument and this update
+  // would mark a document that no longer belongs to this facility.
+  const [marked] = await db
     .update(documents)
     .set({ extractionError: "structured_data_unavailable" })
-    .where(eq(documents.id, documentId));
+    .where(
+      and(eq(documents.id, documentId), eq(documents.organizationId, user.organizationId!)),
+    )
+    .returning();
+  if (!marked) return { error: "Document not found in your facility." };
 
   try {
     await audit.record({

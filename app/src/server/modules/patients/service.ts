@@ -84,8 +84,11 @@ export const patientService = {
     // must be a known type; free-text fields are length-capped.
     const clean: typeof patch = { ...patch };
     if (clean.abhaNumber !== undefined) {
+      // Same gate as lookupIdentifier: a stored number that lookup would
+      // reject as checksum-invalid is unfindable — reject it at write time.
+      const { isAbhaNumber } = await import("@/server/modules/identity/patient-code");
       const digits = clean.abhaNumber.replace(/[^0-9]/g, "");
-      if (digits !== "" && digits.length !== 14) throw new Error("INVALID_ABHA");
+      if (digits !== "" && !isAbhaNumber(digits)) throw new Error("INVALID_ABHA");
       clean.abhaNumber = digits;
     }
     if (

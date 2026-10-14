@@ -75,8 +75,33 @@ export function normalizePatientCode(input: string): string | null {
   return `${PREFIX}-${body.slice(0, 5)}-${body.slice(5)}-${check}`;
 }
 
+/**
+ * ABHA number: 14 digits (xx-xxxx-xxxx-xxxx) with a Verhoeff check digit —
+ * the same checksum Ayushman Bharat uses. Length-only acceptance turned any
+ * 14 digits (a phone suffix, a mistyped ID) into a valid lookup key.
+ */
+const VERHOEFF_D = [
+  [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],
+  [3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],
+  [6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],
+  [9,8,7,6,5,4,3,2,1,0],
+];
+const VERHOEFF_P = [
+  [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],
+  [8,9,1,6,0,4,3,7,2,5],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],
+  [2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8],
+];
+
+function verhoeffValid(digits: string): boolean {
+  let c = 0;
+  const reversed = digits.split("").reverse();
+  for (let i = 0; i < reversed.length; i++) {
+    c = VERHOEFF_D[c]![VERHOEFF_P[i % 8]![Number(reversed[i])]!]!;
+  }
+  return c === 0;
+}
+
 export function isAbhaNumber(input: string): boolean {
-  // ABHA number: 14 digits, historically structured as xx-xxxx-xxxx-xxxx.
   const digits = input.replace(/[^0-9]/g, "");
-  return digits.length === 14;
+  return digits.length === 14 && verhoeffValid(digits);
 }

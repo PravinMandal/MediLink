@@ -676,10 +676,10 @@ describe("Stored-summary scope gating (D3)", () => {
 });
 
 describe("Admin role grants (D2)", () => {
-  let setUserRole: typeof import("../src/server/actions/admin-actions").setUserRole;
+  let setUserRole: typeof import("../src/server/modules/admin/roles").grantUserRole;
 
   it("non-admins cannot grant roles", async () => {
-    ({ setUserRole } = await import("../src/server/actions/admin-actions"));
+    ({ grantUserRole: setUserRole } = await import("../src/server/modules/admin/roles"));
     const target = await signUp("grant-target@test.local", "Target User", "patient");
     await expect(
       setUserRole({

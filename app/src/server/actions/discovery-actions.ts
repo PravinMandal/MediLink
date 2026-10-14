@@ -238,6 +238,14 @@ export async function reportConcernAction(
   if (!requestId) return { error: "Missing request." };
   if (reason.length < 5) return { error: "Describe your concern briefly." };
 
+  // Verify the request targets THIS patient's record: without this, any
+  // logged-in user could file concerns against arbitrary request ids and
+  // poison the audit trail with attacker-chosen resource ids.
+  const { accessRequestsService } = await import("@/server/modules/consent/access-requests");
+  const req = await accessRequestsService.byId(requestId);
+  if (!req) return { error: "Request not found." };
+  await accessRequestsService.assertOwnership(user.id, req.patientId);
+
   const { audit } = await import("@/server/modules/audit/service");
   const { notify } = await import("@/server/modules/notifications/service");
   const [adminRow] = await db
@@ -248,6 +256,7 @@ export async function reportConcernAction(
   await audit.record({
     actorId: user.id,
     actorRole: user.role,
+    patientId: req.patientId,
     action: "access_request.concern_reported",
     resourceType: "access_request",
     resourceId: requestId,

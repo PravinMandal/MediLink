@@ -360,6 +360,16 @@ export const records = {
       date: data.effectiveDate,
       trust: prov.trust,
     });
+    // Every sibling writer audits; the single-observation path (doctor
+    // manual entry) used to create unaudited clinical rows.
+    await audit.record({
+      actorId: prov.authoredById,
+      patientId,
+      organizationId: prov.organizationId ?? null,
+      action: "record.observation.created",
+      resourceType: "observation",
+      resourceId: row.id,
+    });
     return row;
   },
 
@@ -589,6 +599,15 @@ export const records = {
       date: data.effectiveDate,
       trust: prov.trust,
     });
+    // All diagnostic-report writes were unaudited until now.
+    await audit.record({
+      actorId: prov.authoredById,
+      patientId,
+      organizationId: prov.organizationId ?? null,
+      action: "record.diagnostic_report.created",
+      resourceType: "diagnostic_report",
+      resourceId: row.id,
+    });
     return row;
   },
 
@@ -765,10 +784,23 @@ export const records = {
         .values(built.values as never)
         .returning();
       const newId = (row as { id: string }).id;
-      await tx
+      // Patient predicate + live-row guard: correcting an already-superseded
+      // record (or another patient's row) used to overwrite supersededById,
+      // orphaning the first replacement and forking history. Zero rows =
+      // raced or wrong owner, fail closed.
+      const T = table as typeof conditions;
+      const [flipped] = await tx
         .update(table)
         .set({ supersededById: newId })
-        .where(eq((table as typeof conditions).id, input.recordId));
+        .where(
+          and(
+            eq(T.id, input.recordId),
+            eq(T.patientId, input.patientId),
+            isNull(T.supersededById),
+          ),
+        )
+        .returning();
+      if (!flipped) throw new Error("Original record not found or already corrected.");
       // Read through tx, NOT the global-db helper: on PGlite's single
       // connection a global query inside an open transaction deadlocks.
       const [originalVersion] = await tx

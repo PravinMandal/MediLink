@@ -137,11 +137,7 @@ export async function indexDocumentChunks(
   text: string,
   date?: string | null,
 ) {
-  // Replace any prior chunks for this document (idempotent re-index)
-  await db.delete(searchChunks).where(eq(searchChunks.documentId, documentId));
-
   const cleaned = text.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-  if (!cleaned) return;
 
   const CHUNK = 1200;
   const chunks: string[] = [];
@@ -156,19 +152,28 @@ export async function indexDocumentChunks(
     i = end;
   }
 
-  if (!chunks.length) return;
-  await db.insert(searchChunks).values(
-    chunks.map((content) => ({
-      patientId,
-      documentId,
-      recordType: "document",
-      recordId: documentId,
-      label: title,
-      date: date ?? null,
-      trust: "verified",
-      content: `${title}\n${content}`,
-    })),
-  );
+  // Delete-then-insert inside ONE transaction: a crash between them used to
+  // leave the document with zero chunks — unsearchable with no error. An
+  // empty re-index still replaces (a wiped extraction must clear stale
+  // chunks, never leave them searchable).
+  await db.transaction(async (tx) => {
+    await tx.delete(searchChunks).where(eq(searchChunks.documentId, documentId));
+    if (!chunks.length) return;
+    await tx.insert(searchChunks).values(
+      chunks.map((content) => ({
+        patientId,
+        documentId,
+        recordType: "document",
+        recordId: documentId,
+        label: title,
+        date: date ?? null,
+        // Machine-read text is extracted, never verified — the old "verified"
+        // label let raw OCR text display (and be cited) as lab-verified.
+        trust: "extracted",
+        content: `${title}\n${content}`,
+      })),
+    );
+  });
 }
 
 export async function reindexDocument(documentId: string) {

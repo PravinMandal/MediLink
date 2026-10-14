@@ -11,7 +11,17 @@
     "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
     "db:seed": "tsx --env-file=.env scripts/seed.mts",
     "test": "vitest run",
-    "shots": "node scripts/shoot.mjs"
+    "shots": "node scripts/shoot.mjs",
+    "verify": "node scripts/verify.mjs",
+    "verify:e2e": "node scripts/e2e-audit.mjs",
+    "verify:a11y": "node scripts/axe-check.mjs && node scripts/contrast-check.mjs && node scripts/dark-audit.mjs",
+    "verify:journey": "node scripts/signup-journey-check.mjs && node scripts/consent-inbox-check.mjs && node scripts/timeline-check.mjs && node scripts/breakglass-check.mjs",
+    "verify:prod": "node scripts/admin-prod-check.mjs && node scripts/org-prod-check.mjs && node scripts/abha-check.mjs && node scripts/scan-path-check.mjs && npx tsx scripts/qr-check.mjs",
+    "verify": "node scripts/verify.mjs",
+    "verify:e2e": "node scripts/e2e-audit.mjs",
+    "verify:a11y": "node scripts/axe-check.mjs && node scripts/contrast-check.mjs && node scripts/dark-audit.mjs",
+    "verify:journey": "node scripts/signup-journey-check.mjs && node scripts/consent-inbox-check.mjs && node scripts/timeline-check.mjs && node scripts/breakglass-check.mjs",
+    "verify:prod": "node scripts/admin-prod-check.mjs && node scripts/org-prod-check.mjs && node scripts/abha-check.mjs && node scripts/scan-path-check.mjs && npx tsx scripts/qr-check.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",
@@ -40,7 +50,6 @@
     "@types/pg": "^8.21.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",

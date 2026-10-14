@@ -194,6 +194,9 @@ export const accessRequestsService = {
     await this.assertOwnership(input.patientUserId, req.patientId);
 
     if (input.decision === "decline") {
+      // Status-guarded like the approve flip: declining an already-approved
+      // request used to overwrite it to declined while the live grant kept
+      // existing. Zero rows affected = raced, fail closed.
       const [row] = await db
         .update(accessRequests)
         .set({
@@ -202,8 +205,14 @@ export const accessRequestsService = {
           patientResponseReason: input.reason ?? null,
           updatedAt: new Date(),
         })
-        .where(eq(accessRequests.id, input.requestId))
+        .where(
+          and(
+            eq(accessRequests.id, input.requestId),
+            inArray(accessRequests.status, ["submitted", "patient_viewed"]),
+          ),
+        )
         .returning();
+      if (!row) throw new Error("Request is not awaiting a decision (status changed).");
       await audit.record({
         actorId: input.patientUserId,
         actorRole: "patient",

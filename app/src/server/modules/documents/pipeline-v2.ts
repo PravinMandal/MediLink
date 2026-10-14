@@ -121,45 +121,57 @@ export async function ingestDocumentV2(input: {
   // 4. Immutable metadata + scan state + durable job + outbox, committed
   // atomically: a crash between them used to leave a "pending" document
   // with no extraction job (permanently unextracted, no error surfaced).
-  const { documentId, extractionJobId } = await db.transaction(async (tx) => {
-    const [doc] = await tx
-      .insert(documents)
-      .values({
-        id,
-        patientId: input.patientId,
-        kind: input.kind,
-        title,
-        mimeType: input.mimeType,
-        sizeBytes: input.bytes.byteLength,
-        storageKey,
-        contentHash: hash,
-        extractionStatus: "pending", // extraction is now out-of-band
-        uploadedById: input.uploadedById,
-        organizationId: input.organizationId ?? null,
-        recordedDate: input.recordedDate ?? null,
-        encounterId: input.encounterId ?? null,
-      })
-      .returning();
+  // If the transaction fails AFTER the bytes landed, remove them:
+  // otherwise every retried upload strands orphan bytes with no row.
+  let documentId: string;
+  let extractionJobId: string;
+  try {
+    ({ documentId, extractionJobId } = await db.transaction(async (tx) => {
+      const [doc] = await tx
+        .insert(documents)
+        .values({
+          id,
+          patientId: input.patientId,
+          kind: input.kind,
+          title,
+          mimeType: input.mimeType,
+          sizeBytes: input.bytes.byteLength,
+          storageKey,
+          contentHash: hash,
+          extractionStatus: "pending", // extraction is now out-of-band
+          uploadedById: input.uploadedById,
+          organizationId: input.organizationId ?? null,
+          recordedDate: input.recordedDate ?? null,
+          encounterId: input.encounterId ?? null,
+        })
+        .returning();
 
-    await scanDocument(doc!.id, input.bytes, input.mimeType, tx);
+      await scanDocument(doc!.id, input.bytes, input.mimeType, tx);
 
-    const [job] = await tx
-      .insert(extractionJobs)
-      .values({ documentId: doc!.id, status: "pending" })
-      .returning();
-    // Extraction is driven by extraction_jobs + runExtractionPass (worker).
-    await outbox.publish({
-      aggregateType: "document",
-      aggregateId: doc!.id,
-      type: "document.uploaded",
-      payload: { documentId: doc!.id, patientId: input.patientId, kind: input.kind, hash },
-      tx: tx as unknown as Pick<typeof db, "insert">,
-    });
-    return { documentId: doc!.id, extractionJobId: job!.id };
-  });
-
-  const doc = { id: documentId };
-  const job = { id: extractionJobId };
+      const [job] = await tx
+        .insert(extractionJobs)
+        .values({ documentId: doc!.id, status: "pending" })
+        .returning();
+      // Extraction is driven by extraction_jobs + runExtractionPass (worker).
+      await outbox.publish({
+        aggregateType: "document",
+        aggregateId: doc!.id,
+        type: "document.uploaded",
+        payload: { documentId: doc!.id, patientId: input.patientId, kind: input.kind, hash },
+        tx: tx as unknown as Pick<typeof db, "insert">,
+      });
+      return { documentId: doc!.id, extractionJobId: job!.id };
+    }));
+  } catch (err) {
+    // Best-effort orphan cleanup (see above). Never masks the original error.
+    try {
+      await storage.delete(storageKey);
+    } catch {
+      // The orphan stands; storage keys embed the patient id + uuid, so a
+      // future sweeper can enumerate unreferenced keys.
+    }
+    throw err;
+  }
 
   try {
     await audit.record({
@@ -168,14 +180,14 @@ export async function ingestDocumentV2(input: {
       organizationId: input.organizationId ?? null,
       action: "document.uploaded",
       resourceType: "document",
-      resourceId: doc!.id,
-      metadata: { title, kind: input.kind, hash, size: input.bytes.byteLength, extractionJobId: job!.id },
+      resourceId: documentId,
+      metadata: { title, kind: input.kind, hash, size: input.bytes.byteLength, extractionJobId },
     });
   } catch (err) {
     console.error("[audit] write failed (document.uploaded)", err);
   }
 
-  return { documentId: doc!.id, extractionJobId: job!.id };
+  return { documentId, extractionJobId };
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,7 +231,9 @@ export async function runExtractionPass(): Promise<{
     UPDATE extraction_jobs SET status = 'processing', attempts = attempts + 1, updated_at = now()
     WHERE id = (
       SELECT id FROM extraction_jobs
-      WHERE status = 'pending' OR (status = 'failed' AND attempts < 5)
+      WHERE status = 'pending'
+        OR (status = 'failed' AND attempts < 5)
+        OR (status = 'processing' AND updated_at < now() - interval '15 minutes')
       ORDER BY created_at
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -236,12 +250,22 @@ export async function runExtractionPass(): Promise<{
     if (!doc) throw new Error("document row missing");
     const bytes = await getStorage().get(doc.storageKey);
     const { text, pageCount } = await extractText(bytes, doc.mimeType);
+    // Empty extraction (scanned PDF, image pre-OCR) must NOT read "done":
+    // done with no text means "searchable" to every downstream reader, and
+    // the review queue only lists done documents — the report would vanish
+    // from both search and the queue. Keep it pending for the OCR layer.
+    const extracted = text.trim().length > 0;
     await db
       .update(documents)
-      .set({ textExtract: text, pageCount, extractionStatus: "done", extractionError: null })
+      .set({
+        textExtract: text,
+        pageCount,
+        extractionStatus: extracted ? "done" : "pending",
+        extractionError: extracted ? null : "awaiting_ocr",
+      })
       .where(eq(documents.id, doc.id));
     const { indexDocumentChunks } = await import("./pipeline");
-    if (text) {
+    if (extracted) {
       await indexDocumentChunks(doc.id, doc.patientId, doc.title, text, doc.recordedDate);
     }
     await db

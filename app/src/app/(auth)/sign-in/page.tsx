@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { AuthShell, SignInForm } from "@/components/auth-forms";
 import { getSessionUser, portalHomeForRole } from "@/server/session";
 import { authProviders } from "@/server/auth";
+import { safeNextOr } from "@/server/modules/security/redirect";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -14,9 +15,8 @@ export default async function SignInPage({
 }) {
   const { next, registered, reset, error } = await searchParams;
   const user = await getSessionUser();
-  const SAFE_NEXT = /^\/[^/](.*)?$/;
   if (user)
-    redirect(next && SAFE_NEXT.test(next) ? next : portalHomeForRole(user.role));
+    redirect(safeNextOr(next, portalHomeForRole(user.role)));
 
   return (
     <AuthShell

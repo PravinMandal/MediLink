@@ -6,7 +6,7 @@
  * processes pending events with handler registration by type; failures are
  * retried with backoff and dead-letter via `job_runs`.
  */
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { outboxEvents, jobRuns } from "@/server/db/schema";
 
@@ -37,12 +37,27 @@ export const outbox = {
 
   /** Process pending outbox events once. Idempotent; safe to call on a timer. */
   async drain(limit = 20): Promise<{ processed: number; failed: number }> {
-    const pending = await db
-      .select()
-      .from(outboxEvents)
-      .where(isNull(outboxEvents.processedAt))
-      .orderBy(outboxEvents.seq)
-      .limit(limit);
+    // Atomic claim: select + attempts-bump in one statement with SKIP LOCKED,
+    // so two concurrent drains never run the same handler twice. A crashed
+    // drain leaves attempts bumped but processedAt NULL — the row retries on
+    // the next drain, and attempts feed the dead-letter threshold below.
+    const claimed = await db.execute(sql`
+      UPDATE outbox_events SET attempts = attempts + 1
+      WHERE seq IN (
+        SELECT seq FROM outbox_events
+        WHERE processed_at IS NULL
+        ORDER BY seq
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING seq, type, payload, attempts;
+    `);
+    const pending = (claimed.rows ?? []) as unknown as Array<{
+      seq: number;
+      type: string;
+      payload: Record<string, unknown>;
+      attempts: number;
+    }>;
     let processed = 0;
     let failed = 0;
     for (const event of pending) {
@@ -53,7 +68,7 @@ export const outbox = {
         // be silently discarded.
         await db
           .update(outboxEvents)
-          .set({ attempts: event.attempts + 1, lastError: "no handler registered" })
+          .set({ lastError: "no handler registered" })
           .where(eq(outboxEvents.seq, event.seq));
         failed++;
         continue;
@@ -67,13 +82,11 @@ export const outbox = {
         processed++;
       } catch (err) {
         failed++;
-        const attempts = event.attempts + 1;
         await db
           .update(outboxEvents)
           .set({
-            attempts,
             lastError: String(err).slice(0, 500),
-            processedAt: attempts >= 10 ? new Date() : null, // dead-letter at 10
+            processedAt: event.attempts >= 10 ? new Date() : null, // dead-letter at 10
           })
           .where(eq(outboxEvents.seq, event.seq));
       }
@@ -127,11 +140,17 @@ export const jobs = {
    *  FOR UPDATE SKIP LOCKED lets concurrent workers never double-claim. */
   async runOnce(): Promise<{ ran: boolean; jobId?: string; status?: string }> {
     // Claim: mark the oldest pending (or retryable failed) job as running.
+    // The third arm reclaims jobs stuck in 'running' for over 15 minutes —
+    // a crashed worker used to strand them there forever (neither pending
+    // nor failed, so never re-picked). The lease bump on reclaim keeps
+    // attempts honest toward the dead threshold.
     const claimed = await db.execute(sql`
       UPDATE job_runs SET status = 'running', attempts = attempts + 1, updated_at = now()
       WHERE id = (
         SELECT id FROM job_runs
-        WHERE status = 'pending' OR (status = 'failed' AND attempts < 5)
+        WHERE status = 'pending'
+          OR (status = 'failed' AND attempts < 5)
+          OR (status = 'running' AND updated_at < now() - interval '15 minutes')
         ORDER BY created_at
         LIMIT 1
         FOR UPDATE SKIP LOCKED

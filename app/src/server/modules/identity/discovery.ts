@@ -32,7 +32,16 @@ export { rateLimit };
  * Same hex width, so no migration; codes live ≤10 minutes.
  */
 function hashHandoffCode(code: string): string {
-  const pepper = process.env.BETTER_AUTH_SECRET ?? "medilink-dev-handoff-pepper";
+  // Fail closed in production: a missing auth secret means the deployment is
+  // misconfigured, and falling back to a PUBLIC pepper would make every
+  // short handoff code brute-forceable from a database read alone.
+  const pepper = process.env.BETTER_AUTH_SECRET;
+  if (!pepper) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Handoff pepper is not configured.");
+    }
+    return createHmac("sha256", "medilink-dev-handoff-pepper").update(code).digest("hex");
+  }
   return createHmac("sha256", pepper).update(code).digest("hex");
 }
 

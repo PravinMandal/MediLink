@@ -264,10 +264,18 @@ export const emergency = {
   },
 
   async pendingReview(limit = 100) {
+    // Include legacy NULL rows: liveFor treats NULL as live, so the queue
+    // must treat NULL as pending — otherwise a legacy event is reachable
+    // but invisible to reviewers.
     return db
       .select()
       .from(emergencyAccessEvents)
-      .where(eq(emergencyAccessEvents.reviewStatus, "pending"))
+      .where(
+        or(
+          isNull(emergencyAccessEvents.reviewStatus),
+          eq(emergencyAccessEvents.reviewStatus, "pending"),
+        ),
+      )
       .orderBy(desc(emergencyAccessEvents.accessedAt))
       .limit(limit);
   },
@@ -278,14 +286,27 @@ export const emergency = {
     status: "reviewed" | "flagged";
     notes?: string;
   }) {
-    await db
+    // Status-guarded flip from pending/NULL only: re-reviewing an already
+    // flagged event back to reviewed used to silently clear an abuse
+    // finding. Zero rows = raced, already decided, or unknown id.
+    const [row] = await db
       .update(emergencyAccessEvents)
       .set({
         reviewStatus: input.status,
         reviewNotes: input.notes ?? null,
         reviewedBy: input.reviewerId,
       })
-      .where(eq(emergencyAccessEvents.id, input.eventId));
+      .where(
+        and(
+          eq(emergencyAccessEvents.id, input.eventId),
+          or(
+            isNull(emergencyAccessEvents.reviewStatus),
+            eq(emergencyAccessEvents.reviewStatus, "pending"),
+          ),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error("Event is not awaiting review (status changed).");
     await audit.record({
       actorId: input.reviewerId,
       actorRole: "platform_admin",

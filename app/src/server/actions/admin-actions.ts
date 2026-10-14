@@ -91,8 +91,11 @@ export async function verifyAuditChainAction(): Promise<FormState & { brokenAt?:
 /**
  * D2 remainder: professional roles are granted only by a platform admin.
  * platform_admin itself can never be granted through this flow.
+ *
+ * The grant core lives in server/modules/admin/roles.ts (no "use server"
+ * there). This action derives the actor from the session — never from a
+ * caller-supplied id.
  */
-const GRANTABLE_ROLES = new Set(["doctor", "lab_staff", "org_admin"]);
 
 export async function setUserRoleAction(
   _prev: FormState,
@@ -106,7 +109,8 @@ export async function setUserRoleAction(
     if (!targetUserId) return { error: "Choose a user." };
     if (!reason) return { error: "A reason is required for role grants." };
 
-    await setUserRole({
+    const { grantUserRole } = await import("@/server/modules/admin/roles");
+    await grantUserRole({
       actorId: admin.id,
       targetUserId,
       role,
@@ -127,52 +131,4 @@ export async function setUserRoleAction(
   }
   revalidatePath("/portal/admin");
   return { ok: "Role granted." };
-}
-
-export async function setUserRole(input: {
-  actorId: string;
-  targetUserId: string;
-  role: string;
-  reason: string;
-}): Promise<void> {
-  // Re-assert the actor's CURRENT role from the database — the session
-  // cookie alone must never authorize (same principle as getSessionUser).
-  const { eq } = await import("drizzle-orm");
-  const { db } = await import("@/server/db");
-  const { user: userTable } = await import("@/server/db/schema");
-  const [actor] = await db
-    .select({ id: userTable.id, role: userTable.role })
-    .from(userTable)
-    .where(eq(userTable.id, input.actorId))
-    .limit(1);
-  if (!actor || actor.role !== "platform_admin") {
-    throw new Error("ACCESS_DENIED");
-  }
-  if (!GRANTABLE_ROLES.has(input.role)) {
-    // platform_admin elevation is never allowed through this flow
-    throw new Error("INVALID_ROLE");
-  }
-  // Verify-then-write: the old order mutated before checking existence,
-  // so a concurrent deletion threw USER_NOT_FOUND after writing (and a
-  // crash between write and audit stranded a privilege grant with no trail).
-  const [target] = await db
-    .select({ id: userTable.id })
-    .from(userTable)
-    .where(eq(userTable.id, input.targetUserId))
-    .limit(1);
-  if (!target) throw new Error("USER_NOT_FOUND");
-  await db
-    .update(userTable)
-    .set({ role: input.role as "doctor" | "lab_staff" | "org_admin" })
-    .where(eq(userTable.id, input.targetUserId));
-
-  await audit.record({
-    actorId: input.actorId,
-    actorRole: "platform_admin",
-    action: "user.role.granted",
-    resourceType: "user",
-    resourceId: input.targetUserId,
-    reason: input.reason,
-    metadata: { role: input.role },
-  });
 }
