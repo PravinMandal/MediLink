@@ -56,10 +56,20 @@ export type ReviewCandidate = {
   reviewedAt: Date | null;
 };
 
-function requireLabRole(user: SessionUser): string | null {
+async function requireLabRole(user: SessionUser): Promise<string | null> {
   if (user.role !== "lab_staff" && user.role !== "org_admin")
     return "Only lab staff or facility admins can use the verification queue.";
   if (!user.organizationId) return "Your account has no organization attached.";
+  // Same gate as the policy engine's org path: staff of a pending/rejected
+  // facility must not read patient lab values or seal trust, even for
+  // documents their own org uploaded. Without this, an unverified facility
+  // could read any patient's lab values routed through its queue.
+  const { requireVerifiedOrganization } = await import("@/server/modules/identity/verification");
+  try {
+    await requireVerifiedOrganization(user.organizationId);
+  } catch {
+    return "Your facility's verification is still pending. The review queue unlocks once it is approved.";
+  }
   return null;
 }
 
@@ -130,7 +140,7 @@ async function latestReviewStates(resourceIds: string[]) {
  */
 export async function listReviewQueueAction(): Promise<ReviewQueueItem[]> {
   const user = await requireUser();
-  const denied = requireLabRole(user);
+  const denied = await requireLabRole(user);
   if (denied) return [];
   const orgId = user.organizationId!;
 
@@ -208,7 +218,7 @@ export async function reviewCandidatesAction(formData: FormData): Promise<
   { ok: true; document: { id: string; title: string; extractionStatus: string; extractionError: string | null; recordedDate: string | null; patientId: string; patientName: string }; candidates: ReviewCandidate[] } | { ok: false; error: string }
 > {
   const user = await requireUser();
-  const denied = requireLabRole(user);
+  const denied = await requireLabRole(user);
   if (denied) return { ok: false, error: denied };
 
   const documentId = String(formData.get("documentId") ?? "");
@@ -263,7 +273,7 @@ export async function attestDocumentAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const denied = requireLabRole(user);
+  const denied = await requireLabRole(user);
   if (denied) return { error: denied };
 
   // Exactly one document per attestation — never a list.
@@ -343,7 +353,7 @@ export async function markUnableToVerifyAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const denied = requireLabRole(user);
+  const denied = await requireLabRole(user);
   if (denied) return { error: denied };
 
   const documentId = String(formData.get("documentId") ?? "");

@@ -409,4 +409,23 @@ export const accessRequestsService = {
       .limit(1);
     return row ?? null;
   },
+
+  /**
+   * Batched variant of artifactForConsent: one query for N grants instead
+   * of N sequential selects (the consents page's parallelized N+1).
+   * Latest artefact per consent wins, matching the single-row variant.
+   */
+  async artifactsForConsents(consentIds: string[]) {
+    if (!consentIds.length) return new Map<string, (typeof consentArtifacts.$inferSelect)>();
+    const rows = await db
+      .select()
+      .from(consentArtifacts)
+      .where(inArray(consentArtifacts.consentId, consentIds))
+      .orderBy(desc(consentArtifacts.createdAt));
+    const latest = new Map<string, (typeof consentArtifacts.$inferSelect)>();
+    for (const r of rows) {
+      if (!latest.has(r.consentId)) latest.set(r.consentId, r);
+    }
+    return latest;
+  },
 };

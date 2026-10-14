@@ -273,8 +273,14 @@ async function TimelineSection({
 /* ---------------- Documents ---------------- */
 
 async function DocumentsSection({ patientId }: { patientId: string }) {
+  // Orgs batched to exactly the facilities on these docs — the old query
+  // scanned the whole organizations table per page view.
   const docs = await records.documentsFor(patientId);
-  const orgs = await db.select({ id: organizations.id, name: organizations.name }).from(organizations);
+  const orgIds = [...new Set(docs.map((d) => d.organizationId).filter((id) => id != null))] as string[];
+  const { inArray } = await import("drizzle-orm");
+  const orgs = orgIds.length
+    ? await db.select({ id: organizations.id, name: organizations.name }).from(organizations).where(inArray(organizations.id, orgIds))
+    : [];
   const orgName = new Map(orgs.map((o) => [o.id, o.name]));
 
   if (docs.length === 0) {

@@ -11,6 +11,7 @@ import { and, desc, eq, isNull, sql, inArray } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   allergies,
+  clinicalResourceVersions,
   conditions,
   diagnosticReports,
   documents,
@@ -623,6 +624,205 @@ export const records = {
       reason: input.reason,
       metadata: { replacementId: input.replacementId },
     });
+  },
+
+  /**
+   * Atomic correction: insert replacement + flip the original's
+   * supersededById + seal the corrected version, all in ONE transaction.
+   * The old three-call sequence (add → supersede → seal) could strand a
+   * duplicate live row (crash after add) or an unattested visible
+   * correction (crash after supersede). Audit appends stay post-commit —
+   * the hash-chained audit insert can't join a caller transaction.
+   * Search-chunk indexing joins the tx too, so the correction is never
+   * visible-but-unsearchable.
+   */
+  async correct(input: {
+    recordType: "condition" | "allergy" | "medication_statement";
+    recordId: string;
+    patientId: string;
+    reason: string;
+    actorId: string;
+    organizationId?: string | null;
+    sourceDocumentId?: string | null;
+    data:
+      | { kind: "condition"; name: string; status?: "active" | "resolved" | "chronic"; onsetDate?: string; notes?: string }
+      | { kind: "allergy"; substance: string; criticality?: string; reaction?: string; onsetDate?: string }
+      | { kind: "medication"; medication: string; dose?: string; route?: string; frequency?: string; startDate?: string; status?: "active" | "stopped" | "completed"; prescriberId?: string | null };
+  }): Promise<{ newId: string; payload: Record<string, unknown> }> {
+    const table =
+      input.recordType === "condition"
+        ? conditions
+        : input.recordType === "allergy"
+          ? allergies
+          : medicationStatements;
+    const resourceType = input.recordType;
+
+    const buildValues = () => {
+      const base = {
+        patientId: input.patientId,
+        authoredById: input.actorId,
+        organizationId: input.organizationId ?? null,
+        sourceDocumentId: input.sourceDocumentId ?? null,
+        trust: "verified" as const,
+      };
+      if (input.data.kind === "condition") {
+        return {
+          values: {
+            ...base,
+            name: input.data.name,
+            status: input.data.status ?? ("active" as const),
+            onsetDate: input.data.onsetDate ?? null,
+            notes: input.data.notes ?? null,
+            resource: {
+              resourceType: "Condition",
+              code: { text: input.data.name },
+              clinicalStatus: input.data.status ?? "active",
+              onsetDateTime: input.data.onsetDate,
+            },
+          },
+          chunk: {
+            recordType: "condition",
+            label: `Condition: ${input.data.name}`,
+            content: `${input.data.name} — ${input.data.status ?? "active"}${input.data.onsetDate ? ` since ${input.data.onsetDate}` : ""}. ${input.data.notes ?? ""}`,
+            date: input.data.onsetDate ?? null,
+          },
+          payload: {
+            name: input.data.name,
+            status: input.data.status ?? "active",
+            onsetDate: input.data.onsetDate ?? null,
+            notes: input.data.notes ?? null,
+          },
+        };
+      }
+      if (input.data.kind === "allergy") {
+        return {
+          values: {
+            ...base,
+            substance: input.data.substance,
+            criticality: input.data.criticality ?? null,
+            reaction: input.data.reaction ?? null,
+            onsetDate: input.data.onsetDate ?? null,
+            resource: {
+              resourceType: "AllergyIntolerance",
+              code: { text: input.data.substance },
+              criticality: input.data.criticality ?? undefined,
+            },
+          },
+          chunk: {
+            recordType: "allergy",
+            label: `Allergy: ${input.data.substance}`,
+            content: `Allergy to ${input.data.substance}${input.data.criticality ? ` (${input.data.criticality})` : ""}${input.data.reaction ? ` — reaction: ${input.data.reaction}` : ""}.`,
+            date: input.data.onsetDate ?? null,
+          },
+          payload: {
+            substance: input.data.substance,
+            criticality: input.data.criticality ?? null,
+            reaction: input.data.reaction ?? null,
+            onsetDate: input.data.onsetDate ?? null,
+          },
+        };
+      }
+      return {
+        values: {
+          ...base,
+          medication: input.data.medication,
+          dose: input.data.dose ?? null,
+          route: input.data.route ?? null,
+          frequency: input.data.frequency ?? null,
+          startDate: input.data.startDate ?? null,
+          status: input.data.status ?? ("active" as const),
+          prescriberId: input.data.prescriberId ?? null,
+          resource: {
+            resourceType: "MedicationStatement",
+            medicationCodeableConcept: { text: input.data.medication },
+          },
+        },
+        chunk: {
+          recordType: "medication_statement",
+          label: `Medication: ${input.data.medication}`,
+          content: `${input.data.medication} ${input.data.dose ?? ""} ${input.data.frequency ?? ""} — ${input.data.status ?? "active"}.`,
+          date: input.data.startDate ?? null,
+        },
+        payload: {
+          medication: input.data.medication,
+          dose: input.data.dose ?? null,
+          route: input.data.route ?? null,
+          frequency: input.data.frequency ?? null,
+          startDate: input.data.startDate ?? null,
+          status: input.data.status ?? "active",
+        },
+      };
+    };
+
+    const { recordVersions } = await import("@/server/modules/records/versions");
+    const built = buildValues();
+    const result = await db.transaction(async (tx) => {
+      // Guarded flip FIRST would orphan nothing, but the insert must come
+      // first so supersededById points at a row that exists — FK-free, but
+      // readers join on it immediately.
+      const [row] = await tx
+        .insert(table)
+        .values(built.values as never)
+        .returning();
+      const newId = (row as { id: string }).id;
+      await tx
+        .update(table)
+        .set({ supersededById: newId })
+        .where(eq((table as typeof conditions).id, input.recordId));
+      // Read through tx, NOT the global-db helper: on PGlite's single
+      // connection a global query inside an open transaction deadlocks.
+      const [originalVersion] = await tx
+        .select()
+        .from(clinicalResourceVersions)
+        .where(eq(clinicalResourceVersions.resourceId, input.recordId))
+        .orderBy(desc(clinicalResourceVersions.version))
+        .limit(1);
+      const sealed = await recordVersions.sealWithin(tx, {
+        resourceId: newId,
+        resourceType,
+        patientId: input.patientId,
+        payload: built.payload,
+        authoredById: input.actorId,
+        organizationId: input.organizationId ?? null,
+        sourceDocumentId: input.sourceDocumentId ?? null,
+        reviewState: "attested",
+        replacesVersionId: originalVersion?.id ?? null,
+        correctionReason: input.reason,
+        attestedBy: input.actorId,
+      });
+      // Search chunk joins the tx: no visible-but-unsearchable window.
+      await tx.delete(searchChunks).where(
+        and(
+          eq(searchChunks.recordType, built.chunk.recordType),
+          eq(searchChunks.recordId, newId),
+        ),
+      );
+      if (built.chunk.content.trim()) {
+        await tx.insert(searchChunks).values({
+          patientId: input.patientId,
+          recordType: built.chunk.recordType,
+          recordId: newId,
+          label: built.chunk.label,
+          date: built.chunk.date,
+          trust: "verified",
+          content: `${built.chunk.label}\n${built.chunk.content}`,
+        });
+      }
+      return { newId, versionId: sealed.versionId };
+    });
+
+    await audit.record({
+      actorId: input.actorId,
+      patientId: input.patientId,
+      organizationId: input.organizationId ?? null,
+      action: "record.corrected",
+      resourceType,
+      resourceId: result.newId,
+      reason: input.reason,
+      metadata: { supersedes: input.recordId, versionId: result.versionId },
+    });
+
+    return { newId: result.newId, payload: built.payload };
   },
 
   /* ---------------- Reads ---------------- */

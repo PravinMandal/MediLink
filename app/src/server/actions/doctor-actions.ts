@@ -9,12 +9,14 @@ import {
   requireVerifiedPractitioner,
 } from "@/server/modules/identity/verification";
 import { records } from "@/server/modules/records/service";
-import { ingestDocumentV2, retryExtraction as retryExtractionV2 } from "@/server/modules/documents/pipeline-v2";
+import {
+  ingestDocumentV2,
+  retryExtraction as retryExtractionV2,
+} from "@/server/modules/documents/pipeline-v2";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
 import { summarizer } from "@/server/modules/ai/summarize";
 import { emergency } from "@/server/modules/emergency/service";
 import { audit } from "@/server/modules/audit/service";
-import { recordVersions } from "@/server/modules/records/versions";
 import type { FormState } from "./auth-actions";
 
 function guardUser(user: SessionUser) {
@@ -520,11 +522,10 @@ const CORRECTABLE: Record<
 
 /**
  * Correct a clinical record (§7.10): the contributor never edits the
- * original. This (a) inserts the corrected row with verified trust, (b)
- * supersedes the original via records.supersede, and (c) seals the new
- * version via recordVersions.seal with replacesVersionId when the original
- * has a sealed version. A mandatory correction reason is stored with the
- * version chain.
+ * original. Insert + supersede + version seal commit atomically inside
+ * records.correct() — the old three-call sequence could strand a duplicate
+ * live row or an unattested visible correction on crash. A mandatory
+ * correction reason is stored with the version chain.
  */
 export async function correctRecordAction(
   _prev: FormState,
@@ -554,14 +555,6 @@ export async function correctRecordAction(
     );
     await access.assert(guardUser(user), patientId, scope);
 
-    const prov = {
-      authoredById: user.id,
-      organizationId: practitioner.organizationId,
-      // A correction by a verified practitioner carries the same trust as a
-      // direct entry; provenance of the original stays intact on its own row.
-      trust: "verified" as const,
-    };
-
     // The original row supplies the source-document linkage when present.
     const { db } = await import("@/server/db");
     const { conditions, allergies, medicationStatements } = await import(
@@ -578,101 +571,59 @@ export async function correctRecordAction(
     if (!original || original.patientId !== patientId)
       return { error: "Original record not found for this patient." };
 
-    let newId: string;
-    let payload: Record<string, unknown>;
-
+    let data: Parameters<typeof records.correct>[0]["data"];
     if (originalType === "condition") {
       const name = String(formData.get("name") ?? "").trim();
       if (!name) return { error: "Condition name is required." };
-      const row = await records.addCondition(
-        patientId,
-        {
-          name,
-          status: String(formData.get("status") ?? "active") as
-            | "active"
-            | "resolved"
-            | "chronic",
-          onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
-          notes: String(formData.get("notes") ?? "") || undefined,
-        },
-        { ...prov, sourceDocumentId: original.sourceDocumentId ?? null },
-      );
-      newId = row.id;
-      payload = { name, status: row.status, onsetDate: row.onsetDate, notes: row.notes };
+      data = {
+        kind: "condition",
+        name,
+        status: String(formData.get("status") ?? "active") as
+          | "active"
+          | "resolved"
+          | "chronic",
+        onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
+        notes: String(formData.get("notes") ?? "") || undefined,
+      };
     } else if (originalType === "allergy") {
       const substance = String(formData.get("substance") ?? "").trim();
       if (!substance) return { error: "Allergy substance is required." };
-      const row = await records.addAllergy(
-        patientId,
-        {
-          substance,
-          criticality: String(formData.get("criticality") ?? "") || undefined,
-          reaction: String(formData.get("reaction") ?? "") || undefined,
-          onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
-        },
-        { ...prov, sourceDocumentId: original.sourceDocumentId ?? null },
-      );
-      newId = row.id;
-      payload = {
+      data = {
+        kind: "allergy",
         substance,
-        criticality: row.criticality,
-        reaction: row.reaction,
-        onsetDate: row.onsetDate,
+        criticality: String(formData.get("criticality") ?? "") || undefined,
+        reaction: String(formData.get("reaction") ?? "") || undefined,
+        onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
       };
     } else {
       const medication = String(formData.get("medication") ?? "").trim();
       if (!medication) return { error: "Medication name is required." };
-      const row = await records.addMedication(
-        patientId,
-        {
-          medication,
-          dose: String(formData.get("dose") ?? "") || undefined,
-          route: String(formData.get("route") ?? "") || undefined,
-          frequency: String(formData.get("frequency") ?? "") || undefined,
-          startDate: String(formData.get("startDate") ?? "") || undefined,
-          status: String(formData.get("status") ?? "active") as
-            | "active"
-            | "stopped"
-            | "completed",
-          prescriberId: practitioner.id,
-        },
-        { ...prov, sourceDocumentId: original.sourceDocumentId ?? null },
-      );
-      newId = row.id;
-      payload = {
+      data = {
+        kind: "medication",
         medication,
-        dose: row.dose,
-        route: row.route,
-        frequency: row.frequency,
-        startDate: row.startDate,
-        status: row.status,
+        dose: String(formData.get("dose") ?? "") || undefined,
+        route: String(formData.get("route") ?? "") || undefined,
+        frequency: String(formData.get("frequency") ?? "") || undefined,
+        startDate: String(formData.get("startDate") ?? "") || undefined,
+        status: String(formData.get("status") ?? "active") as
+          | "active"
+          | "stopped"
+          | "completed",
+        prescriberId: practitioner.id,
       };
     }
 
-    // Original stays readable — supersede points at the replacement.
-    await records.supersede({
+    // Atomic: replacement insert + original supersede + version seal commit
+    // in one transaction (records.correct). Audit lands post-commit.
+    await records.correct({
       recordType: originalType,
       recordId: originalId,
-      replacementId: newId,
+      patientId,
       reason,
       actorId: user.id,
-    });
-
-    // Seal the corrected version, linked to the original's latest version
-    // when one exists (§7.10: corrections are linked versions).
-    const originalVersion = await recordVersions.currentVersion(originalId);
-    await recordVersions.seal({
-      resourceId: newId,
-      resourceType: originalType,
-      patientId,
-      payload,
-      authoredById: user.id,
       organizationId: practitioner.organizationId,
       sourceDocumentId: original.sourceDocumentId ?? null,
-      reviewState: "attested",
-      replacesVersionId: originalVersion?.id ?? null,
-      correctionReason: reason,
-      attestedBy: user.id,
+      data,
     });
 
     await contradictionEngine.detect(patientId);

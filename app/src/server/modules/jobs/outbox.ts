@@ -100,13 +100,10 @@ export const jobs = {
     payload: Record<string, unknown>;
     idempotencyKey?: string;
   }) {
-    const [existing] = input.idempotencyKey
-      ? await db
-          .select()
-          .from(jobRuns)
-          .where(eq(jobRuns.idempotencyKey, input.idempotencyKey))
-      : [];
-    if (existing) return existing; // idempotent — never double-enqueue
+    // Check-then-act races under concurrent retries (double-submit): both
+    // pass the select, one hits the unique constraint and 500s as "Upload
+    // failed" even though the document ingested fine. ON CONFLICT absorbs
+    // the loser, then re-select returns the winner's row.
     const [row] = await db
       .insert(jobRuns)
       .values({
@@ -114,8 +111,16 @@ export const jobs = {
         payload: input.payload,
         idempotencyKey: input.idempotencyKey ?? null,
       })
+      .onConflictDoNothing({ target: jobRuns.idempotencyKey })
       .returning();
-    return row;
+    if (row) return row;
+    if (!input.idempotencyKey) throw new Error("Job enqueue failed.");
+    const [existing] = await db
+      .select()
+      .from(jobRuns)
+      .where(eq(jobRuns.idempotencyKey, input.idempotencyKey));
+    if (!existing) throw new Error("Job enqueue failed.");
+    return existing;
   },
 
   /** Claim-and-run one pending/failed job. Safe to call repeatedly.

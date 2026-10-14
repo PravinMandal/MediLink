@@ -48,7 +48,103 @@ export const recordVersions = {
    * Append a new version. If the payload supersedes a prior version, pass
    * `replacesVersionId` + correctionReason — the old version flips to
    * `superseded` in the same transaction.
+   *
+   * Pass a caller's `tx` (from db.transaction) to join an outer
+   * transaction — used by the correction flow, where the clinical row,
+   * the supersede flip, and this version must commit atomically. The
+   * audit append stays post-commit (chain insert can't join a caller tx).
    */
+  async sealWithin(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    input: {
+      resourceId: string;
+      resourceType: string;
+      patientId: string;
+      payload: Record<string, unknown>;
+      authoredById: string;
+      organizationId?: string | null;
+      credentialSnapshot?: Record<string, unknown> | null;
+      sourceDocumentId?: string | null;
+      pageRefs?: Array<{ page: number; region?: string }> | null;
+      reviewState?: ReviewState;
+      replacesVersionId?: string | null;
+      correctionReason?: string | null;
+      attestedBy?: string | null;
+    },
+  ): Promise<{ versionId: string; payloadSha256: string; version: number }> {
+    const canonical = canonicalize(input.payload);
+    const payloadSha256 = createHash("sha256").update(canonical).digest("hex");
+
+    const [latest] = await tx
+      .select({ version: clinicalResourceVersions.version })
+      .from(clinicalResourceVersions)
+      .where(eq(clinicalResourceVersions.resourceId, input.resourceId))
+      .orderBy(desc(clinicalResourceVersions.version))
+      .limit(1);
+    const version = (latest?.version ?? 0) + 1;
+
+    if (input.replacesVersionId) {
+      await tx
+        .update(clinicalResourceVersions)
+        .set({ lifecycleStatus: "superseded" })
+        .where(
+          and(
+            eq(clinicalResourceVersions.id, input.replacesVersionId),
+            eq(clinicalResourceVersions.resourceId, input.resourceId),
+          ),
+        );
+    }
+
+    const [row] = await tx
+      .insert(clinicalResourceVersions)
+      .values({
+        resourceId: input.resourceId,
+        resourceType: input.resourceType,
+        patientId: input.patientId,
+        version,
+        payload: input.payload,
+        payloadSha256,
+        lifecycleStatus: input.replacesVersionId ? "corrected" : "active",
+        replacesVersionId: input.replacesVersionId ?? null,
+        correctionReason: input.correctionReason ?? null,
+        authoredById: input.authoredById,
+        organizationId: input.organizationId ?? null,
+        credentialSnapshot: input.credentialSnapshot ?? null,
+        sourceDocumentId: input.sourceDocumentId ?? null,
+        pageRefs: input.pageRefs ?? null,
+        reviewState: input.reviewState ?? "not_required",
+        reviewedBy: null,
+        reviewedAt: null,
+      })
+      .returning();
+
+    if (input.attestedBy) {
+      await tx.insert(attestations).values({
+        versionId: row!.id,
+        attestedBy: input.attestedBy,
+        attestationText: ATTESTATION_TEXT,
+      });
+    }
+
+    await outbox.publish({
+      aggregateType: "clinical_resource_version",
+      aggregateId: row!.id,
+      type: input.replacesVersionId
+        ? "clinical_version.corrected"
+        : "clinical_version.sealed",
+      payload: {
+        versionId: row!.id,
+        resourceId: input.resourceId,
+        resourceType: input.resourceType,
+        patientId: input.patientId,
+        payloadSha256,
+      },
+      tx: tx as unknown as Pick<typeof db, "insert">,
+    });
+
+    return { versionId: row!.id, payloadSha256, version };
+  },
+
   async seal(input: {
     resourceId: string;
     resourceType: string;
@@ -64,88 +160,11 @@ export const recordVersions = {
     correctionReason?: string | null;
     attestedBy?: string | null;
   }): Promise<{ versionId: string; payloadSha256: string; version: number }> {
-    const canonical = canonicalize(input.payload);
-    const payloadSha256 = createHash("sha256").update(canonical).digest("hex");
-
-    const result = await db.transaction(async (tx) => {
-      // Next version number for the resource.
-      const [latest] = await tx
-        .select({ version: clinicalResourceVersions.version })
-        .from(clinicalResourceVersions)
-        .where(eq(clinicalResourceVersions.resourceId, input.resourceId))
-        .orderBy(desc(clinicalResourceVersions.version))
-        .limit(1);
-      const version = (latest?.version ?? 0) + 1;
-
-      // Supersede the replaced version atomically.
-      if (input.replacesVersionId) {
-        await tx
-          .update(clinicalResourceVersions)
-          .set({ lifecycleStatus: "superseded" })
-          .where(
-            and(
-              eq(clinicalResourceVersions.id, input.replacesVersionId),
-              eq(clinicalResourceVersions.resourceId, input.resourceId),
-            ),
-          );
-      }
-
-      const [row] = await tx
-        .insert(clinicalResourceVersions)
-        .values({
-          resourceId: input.resourceId,
-          resourceType: input.resourceType,
-          patientId: input.patientId,
-          version,
-          payload: input.payload,
-          payloadSha256,
-          lifecycleStatus: input.replacesVersionId ? "corrected" : "active",
-          replacesVersionId: input.replacesVersionId ?? null,
-          correctionReason: input.correctionReason ?? null,
-          authoredById: input.authoredById,
-          organizationId: input.organizationId ?? null,
-          credentialSnapshot: input.credentialSnapshot ?? null,
-          sourceDocumentId: input.sourceDocumentId ?? null,
-          pageRefs: input.pageRefs ?? null,
-          reviewState: input.reviewState ?? "not_required",
-          // Self-authorship is never independent review: reviewedBy stays
-          // null until a DIFFERENT verified party reviews. Callers must pass
-          // reviewState "authored" for self-writes; "attested" requires the
-          // separate attestations row (see input.attestedBy below).
-          reviewedBy: null,
-          reviewedAt: null,
-        })
-        .returning();
-
-      if (input.attestedBy) {
-        await tx.insert(attestations).values({
-          versionId: row!.id,
-          attestedBy: input.attestedBy,
-          attestationText: ATTESTATION_TEXT,
-        });
-      }
-
-      // Outbox event in the same transaction for indexing/notifications.
-      await outbox.publish(
-        {
-          aggregateType: "clinical_resource_version",
-          aggregateId: row!.id,
-          type: input.replacesVersionId
-            ? "clinical_version.corrected"
-            : "clinical_version.sealed",
-          payload: {
-            versionId: row!.id,
-            resourceId: input.resourceId,
-            resourceType: input.resourceType,
-            patientId: input.patientId,
-            payloadSha256,
-          },
-          tx: tx as unknown as Pick<typeof db, "insert">,
-        },
-      );
-
-      return { versionId: row!.id, payloadSha256, version };
-    });
+    // Single implementation: sealWithin owns the writes; this wrapper adds
+    // the transaction boundary + post-commit audit.
+    const result = await db.transaction(async (tx) =>
+      recordVersions.sealWithin(tx, input),
+    );
 
     await audit.record({
       actorId: input.authoredById,
@@ -156,7 +175,7 @@ export const recordVersions = {
         : "record_version.sealed",
       resourceType: input.resourceType,
       resourceId: input.resourceId,
-      metadata: { versionId: result.versionId, version: result.version, payloadSha256 },
+      metadata: { versionId: result.versionId, version: result.version, payloadSha256: result.payloadSha256 },
     });
 
     return result;

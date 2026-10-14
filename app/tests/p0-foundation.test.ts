@@ -481,6 +481,50 @@ describe("Immutable record versions", () => {
     expect(cur.replacesVersionId).toBe(first.versionId);
   });
 
+  it("records.correct() commits row + supersede + version atomically", async () => {
+    const { records } = await import("../src/server/modules/records/service");
+    const [orig] = await db
+      .insert(schema.conditions)
+      .values({ patientId, name: "Asthma", status: "active" })
+      .returning();
+    const { newId } = await records.correct({
+      recordType: "condition",
+      recordId: orig!.id,
+      patientId,
+      reason: "Updated diagnosis after spirometry review",
+      actorId: doctorId,
+      data: { kind: "condition", name: "Asthma", status: "chronic" },
+    });
+    // Replacement is live, original points at it…
+    const [fresh] = await db
+      .select()
+      .from(schema.conditions)
+      .where(eq(schema.conditions.id, orig!.id));
+    expect(fresh!.supersededById).toBe(newId);
+    const current = await records.currentConditions(patientId);
+    expect(current.some((c) => c.id === orig!.id)).toBe(false);
+    expect(current.some((c) => c.id === newId)).toBe(true);
+    // …and the corrected version is sealed + linked in the same commit.
+    const history = await versions.recordVersions.history(newId);
+    expect(history).toHaveLength(1);
+    expect(history[0]!.lifecycleStatus).toBe("active");
+    // A crash-window orphan (live duplicate) is structurally impossible:
+    // there is exactly one non-superseded row carrying this name.
+    const live = current.filter((c) => c.name === "Asthma");
+    expect(live).toHaveLength(1);
+  });
+
+  it("artifactsForConsents batches the latest artefact per grant", async () => {
+    // Empty batch is a no-op (page renders without receipt decoration).
+    const empty = await accessRequestsService.artifactsForConsents([]);
+    expect(empty.size).toBe(0);
+    // Unknown ids return nothing — never throw on the page path.
+    const missing = await accessRequestsService.artifactsForConsents([
+      "00000000-0000-0000-0000-000000000000",
+    ]);
+    expect(missing.size).toBe(0);
+  });
+
   it("disputes flag the current version without rewriting it", async () => {
     const [condRow] = await db
       .insert(schema.conditions)

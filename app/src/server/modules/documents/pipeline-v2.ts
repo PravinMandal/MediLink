@@ -53,13 +53,18 @@ export class IngestError extends Error {}
 export const QUARANTINE_PREFIX = "quarantine/";
 
 /** Malware-scan integration point: clean/skipped in dev; quarantined until clean. */
-async function scanDocument(documentId: string, bytes: Uint8Array, mime: string) {
+async function scanDocument(
+  documentId: string,
+  bytes: Uint8Array,
+  mime: string,
+  tx?: Pick<typeof db, "insert">,
+) {
   // Integration point for a real scanner (ClamAV etc.). In the pilot demo
   // environment scanning is "skipped" and files remain served only through
   // the authorization-checked, safe-preview file route.
   const scanner = process.env.MALWARE_SCANNER ?? "none";
   const status = scanner === "none" ? "skipped" : "pending";
-  await db.insert(documentScanState).values({
+  await (tx ?? db).insert(documentScanState).values({
     documentId,
     scanStatus: status,
     scanner: scanner === "none" ? "disabled (pilot)" : scanner,
@@ -113,39 +118,48 @@ export async function ingestDocumentV2(input: {
   const storage = getStorage();
   await storage.put(storageKey, input.bytes, input.mimeType);
 
-  // 4. Immutable metadata + scan state + durable job + outbox, committed.
-  const [doc] = await db
-    .insert(documents)
-    .values({
-      id,
-      patientId: input.patientId,
-      kind: input.kind,
-      title,
-      mimeType: input.mimeType,
-      sizeBytes: input.bytes.byteLength,
-      storageKey,
-      contentHash: hash,
-      extractionStatus: "pending", // extraction is now out-of-band
-      uploadedById: input.uploadedById,
-      organizationId: input.organizationId ?? null,
-      recordedDate: input.recordedDate ?? null,
-      encounterId: input.encounterId ?? null,
-    })
-    .returning();
+  // 4. Immutable metadata + scan state + durable job + outbox, committed
+  // atomically: a crash between them used to leave a "pending" document
+  // with no extraction job (permanently unextracted, no error surfaced).
+  const { documentId, extractionJobId } = await db.transaction(async (tx) => {
+    const [doc] = await tx
+      .insert(documents)
+      .values({
+        id,
+        patientId: input.patientId,
+        kind: input.kind,
+        title,
+        mimeType: input.mimeType,
+        sizeBytes: input.bytes.byteLength,
+        storageKey,
+        contentHash: hash,
+        extractionStatus: "pending", // extraction is now out-of-band
+        uploadedById: input.uploadedById,
+        organizationId: input.organizationId ?? null,
+        recordedDate: input.recordedDate ?? null,
+        encounterId: input.encounterId ?? null,
+      })
+      .returning();
 
-  await scanDocument(doc!.id, input.bytes, input.mimeType);
+    await scanDocument(doc!.id, input.bytes, input.mimeType, tx);
 
-  const [job] = await db
-    .insert(extractionJobs)
-    .values({ documentId: doc!.id, status: "pending" })
-    .returning();
-  // Extraction is driven by extraction_jobs + runExtractionPass (worker).
-  await outbox.publish({
-    aggregateType: "document",
-    aggregateId: doc!.id,
-    type: "document.uploaded",
-    payload: { documentId: doc!.id, patientId: input.patientId, kind: input.kind, hash },
+    const [job] = await tx
+      .insert(extractionJobs)
+      .values({ documentId: doc!.id, status: "pending" })
+      .returning();
+    // Extraction is driven by extraction_jobs + runExtractionPass (worker).
+    await outbox.publish({
+      aggregateType: "document",
+      aggregateId: doc!.id,
+      type: "document.uploaded",
+      payload: { documentId: doc!.id, patientId: input.patientId, kind: input.kind, hash },
+      tx: tx as unknown as Pick<typeof db, "insert">,
+    });
+    return { documentId: doc!.id, extractionJobId: job!.id };
   });
+
+  const doc = { id: documentId };
+  const job = { id: extractionJobId };
 
   try {
     await audit.record({

@@ -21,15 +21,21 @@ export default async function AccessHistory({
   const patient = await patientService.forUser(user.id);
   if (!patient) return <EmptyState title="No patient record linked to this account." />;
 
+  // Count + page fetch are independent — and the page now reads exactly
+  // its own window via limit/offset instead of re-fetching every row above
+  // it and slicing in JS (over-fetch grew with page depth).
   const { page: rawPage } = await searchParams;
-  const total = await audit.countForPatient(patient.id);
+  const wanted = Math.max(Number.parseInt(rawPage ?? "1", 10) || 1, 1);
+  const offset = (wanted - 1) * PAGE_SIZE;
+  const [total, pageEvents] = await Promise.all([
+    audit.countForPatient(patient.id),
+    audit.forPatient(patient.id, PAGE_SIZE + 1, offset),
+  ]);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const page = Math.min(Math.max(Number.parseInt(rawPage ?? "1", 10) || 1, 1), pageCount);
-
-  // +1 overhang: presence of a 26th row means "next" exists
-  const events = await audit.forPatient(patient.id, page * PAGE_SIZE + 1);
-  const pageEvents = events.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const hasNext = page < pageCount;
+  const page = Math.min(wanted, pageCount);
+  // +1 overhang: presence of a 26th row means "next" exists.
+  const hasNext = pageEvents.length > PAGE_SIZE || page < pageCount;
+  const events = pageEvents.slice(0, PAGE_SIZE);
 
   return (
     <>
@@ -43,7 +49,7 @@ export default async function AccessHistory({
       ) : (
         <Card>
           <ul className="divide-y divide-line">
-            {pageEvents.map((e) => {
+            {events.map((e) => {
               const isEmergency = e.action.startsWith("emergency");
               return (
                 <li

@@ -152,16 +152,19 @@ export async function setUserRole(input: {
     // platform_admin elevation is never allowed through this flow
     throw new Error("INVALID_ROLE");
   }
-  await db
-    .update(userTable)
-    .set({ role: input.role as "doctor" | "lab_staff" | "org_admin" })
-    .where(eq(userTable.id, input.targetUserId));
+  // Verify-then-write: the old order mutated before checking existence,
+  // so a concurrent deletion threw USER_NOT_FOUND after writing (and a
+  // crash between write and audit stranded a privilege grant with no trail).
   const [target] = await db
     .select({ id: userTable.id })
     .from(userTable)
     .where(eq(userTable.id, input.targetUserId))
     .limit(1);
   if (!target) throw new Error("USER_NOT_FOUND");
+  await db
+    .update(userTable)
+    .set({ role: input.role as "doctor" | "lab_staff" | "org_admin" })
+    .where(eq(userTable.id, input.targetUserId));
 
   await audit.record({
     actorId: input.actorId,

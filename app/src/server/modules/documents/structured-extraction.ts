@@ -7,9 +7,9 @@
  * output is machine-read from document text — displayed with
  * trust:"extracted", never outranking lab-verified values.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
-import { documents } from "@/server/db/schema";
+import { diagnosticReports, documents } from "@/server/db/schema";
 import { extraction } from "@/server/modules/ai/extract";
 import { records } from "@/server/modules/records/service";
 
@@ -36,13 +36,14 @@ export async function runStructuredExtraction(
     .where(eq(documents.id, documentId));
   if (!doc?.textExtract) return { skipped: "no extracted text" };
 
-  // Idempotency per document: the observation batch below is a single atomic
-  // INSERT, so a crash can only strand either zero rows (safe to re-run) or
-  // the complete set (must skip, not duplicate). A redelivered job after a
-  // post-commit crash would otherwise double every extracted field.
+  // Idempotency per document — completion-marked, not presence-marked. The
+  // old guard ("any observation for this document → skip") fossilized
+  // partial runs: a crash after the labs but before the diagnostic report
+  // left the report missing forever with the job marked done. Now every
+  // expected write (labs batch, blood-group row, lab report row) is checked;
+  // a rerun backfills exactly what's missing and stays a no-op when whole.
   const { observations } = await import("@/server/db/schema");
-  const { and, isNull } = await import("drizzle-orm");
-  const [prior] = await db
+  const [priorObs] = await db
     .select({ id: observations.id })
     .from(observations)
     .where(
@@ -52,10 +53,20 @@ export async function runStructuredExtraction(
       ),
     )
     .limit(1);
-  if (prior) return { skipped: "already extracted", documentId };
+  let priorReport: { id: string } | undefined;
+  if (ctx.kind === "lab_report") {
+    [priorReport] = await db
+      .select({ id: diagnosticReports.id })
+      .from(diagnosticReports)
+      .where(eq(diagnosticReports.sourceDocumentId, documentId))
+      .limit(1);
+  }
+  const needsObs = !priorObs;
+  const needsReport = ctx.kind === "lab_report" && !priorReport;
+  if (!needsObs && !needsReport) return { skipped: "already extracted", documentId };
 
   const extracted = await extraction.fromText(doc.textExtract);
-  if (extracted.labs.length || extracted.bloodGroup) {
+  if (needsObs && (extracted.labs.length || extracted.bloodGroup)) {
     const prov = {
       authoredById: ctx.userId,
       organizationId: ctx.organizationId,
@@ -93,7 +104,7 @@ export async function runStructuredExtraction(
       );
     }
   }
-  if (ctx.kind === "lab_report") {
+  if (needsReport) {
     await records.addDiagnosticReport(
       ctx.patientId,
       {

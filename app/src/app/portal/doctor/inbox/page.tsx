@@ -31,24 +31,31 @@ const TYPE_META: Record<string, { label: string; tone: "pine" | "amber" | "alert
 export default async function DoctorInboxPage() {
   const user = await requireRole("doctor");
 
-  // Notifications addressed to this doctor…
-  const direct = await db
-    .select()
-    .from(notifications)
-    .where(eq(notifications.userId, user.id))
-    .orderBy(desc(notifications.createdAt))
-    .limit(50);
+  // Notifications + practitioner row are independent (both keyed off
+  // user.id) — fetch together instead of in sequence.
+  const [direct, practitioner] = await Promise.all([
+    db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, user.id))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50),
+    db
+      .select({ id: practitioners.id })
+      .from(practitioners)
+      .where(eq(practitioners.userId, user.id))
+      .limit(1),
+  ]);
 
-  // …plus grants that expired or expire within 7 days (expiry warnings are
-  // computed, not stored — they always reflect live data).
-  const practitioner = await db
-    .select({ id: practitioners.id })
-    .from(practitioners)
-    .where(eq(practitioners.userId, user.id))
-    .limit(1);
-
+  // …plus grants that expire within 7 days (expiry warnings are computed,
+  // not stored — they always reflect live data). The window lives in the
+  // WHERE clause now: the old version pulled every grant for the
+  // practitioner and filtered in JS.
   const expiring: Array<{ patientName: string; expiresAt: Date; patientId: string }> = [];
   if (practitioner[0]) {
+    const now = new Date();
+    const soon = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const { and, gt, lte } = await import("drizzle-orm");
     const rows = await db
       .select({
         patientId: patients.id,
@@ -57,15 +64,19 @@ export default async function DoctorInboxPage() {
       })
       .from(consents)
       .innerJoin(patients, eq(patients.id, consents.patientId))
-      .where(eq(consents.granteePractitionerId, practitioner[0].id));
+      .where(
+        and(
+          eq(consents.granteePractitionerId, practitioner[0].id),
+          gt(consents.expiresAt, now),
+          lte(consents.expiresAt, soon),
+        ),
+      )
+      .limit(100);
     const seen = new Set<string>();
-    const now = new Date(Date.now() + 7 * 24 * 3600 * 1000);
     for (const r of rows) {
       if (seen.has(r.patientId)) continue;
-      if (r.expiresAt > new Date() && r.expiresAt <= now) {
-        seen.add(r.patientId);
-        expiring.push(r);
-      }
+      seen.add(r.patientId);
+      expiring.push(r);
     }
   }
 

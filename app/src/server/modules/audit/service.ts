@@ -211,13 +211,14 @@ export const audit = {
     }
   },
 
-  async forPatient(patientId: string, limit = 100) {
+  async forPatient(patientId: string, limit = 100, offset = 0) {
     return db
       .select()
       .from(auditEvents)
       .where(sql`${auditEvents.patientId} = ${patientId}`)
       .orderBy(desc(auditEvents.seq))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
   },
 
   async countForPatient(patientId: string): Promise<number> {

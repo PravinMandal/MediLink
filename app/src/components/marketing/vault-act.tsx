@@ -37,7 +37,7 @@ function seg(s: number, from: number, to: number): number {
 export type VaultProgress = { current: number; granted: boolean };
 
 /** Glass vault capsule + report card, driven by a single scrubbed value s: 0→4. */
-function VaultScene({ progress }: { progress: React.MutableRefObject<VaultProgress> }) {
+function VaultScene({ progress, coarse }: { progress: React.MutableRefObject<VaultProgress>; coarse: boolean }) {
   const group = useRef<THREE.Group>(null);
   const halves = useRef<Array<THREE.Group | null>>([]);
   const ring = useRef<THREE.Mesh>(null);
@@ -45,17 +45,29 @@ function VaultScene({ progress }: { progress: React.MutableRefObject<VaultProgre
 
   const mats = useMemo(
     () => ({
-      glass: new THREE.MeshPhysicalMaterial({
-        color: "#3d6fd1",
-        transparent: true,
-        opacity: 0.28,
-        roughness: 0.12,
-        metalness: 0.1,
-        clearcoat: 1,
-        clearcoatRoughness: 0.15,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
+      // Physical + clearcoat roughly doubles fragment cost vs standard for
+      // a faint blue shell — mobile gets MeshStandardMaterial instead.
+      glass: coarse
+        ? new THREE.MeshStandardMaterial({
+            color: "#3d6fd1",
+            transparent: true,
+            opacity: 0.32,
+            roughness: 0.25,
+            metalness: 0.15,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          })
+        : new THREE.MeshPhysicalMaterial({
+            color: "#3d6fd1",
+            transparent: true,
+            opacity: 0.28,
+            roughness: 0.12,
+            metalness: 0.1,
+            clearcoat: 1,
+            clearcoatRoughness: 0.15,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          }),
       card: new THREE.MeshStandardMaterial({ color: "#dbe7ff", roughness: 0.5 }),
       cardEdge: new THREE.MeshStandardMaterial({ color: "#2e6fe8", roughness: 0.4 }),
       seal: new THREE.MeshStandardMaterial({
@@ -72,7 +84,7 @@ function VaultScene({ progress }: { progress: React.MutableRefObject<VaultProgre
         metalness: 0.6,
       }),
     }),
-    [],
+    [coarse],
   );
 
   useEffect(() => () => Object.values(mats).forEach((m) => m.dispose()), [mats]);
@@ -160,8 +172,16 @@ export function VaultAct() {
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  // Mobile perf tier: fullscreen transparent physical glass + MSAA at
+  // DPR 2 melts mid-tier phones. Coarse pointers get DPR 1, no MSAA,
+  // cheaper materials, and fewer stars (see Canvas + VaultScene below).
+  const [coarse] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches,
+  );
   const [grant, setGrant] = useState(false);
   const [failed, setFailed] = useState(false);
+  const lastBeat = useRef(0);
   const sectionRef = useRef<HTMLElement>(null);
   const captionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const progress = useRef<VaultProgress>({ current: 0, granted: false });
@@ -190,6 +210,11 @@ export function VaultAct() {
             onUpdate: (self) => {
               progress.current.current = self.progress * 4;
               const beat = Math.min(3, Math.floor(self.progress * 4));
+              // Beat-change-only DOM writes: the old code forced opacity +
+              // aria updates on 4 nodes every scrub tick (style recalc for
+              // the whole sticky section, 4 viewports of scroll).
+              if (beat === lastBeat.current) return;
+              lastBeat.current = beat;
               captionRefs.current.forEach((el, i) => {
                 if (!el) return;
                 const on = i === beat;
@@ -231,8 +256,8 @@ export function VaultAct() {
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
         <div className="absolute inset-0" aria-hidden={false}>
           <Canvas
-            dpr={[1, 2]}
-            gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+            dpr={coarse ? 1 : [1, 2]}
+            gl={{ antialias: !coarse, alpha: false, powerPreference: "high-performance" }}
             camera={{ position: [0, 0.4, 7.5], fov: 42 }}
             onCreated={({ gl }) => gl.setClearColor("#060a14")}
             onError={() => setFailed(true)}
@@ -241,9 +266,9 @@ export function VaultAct() {
             <ambientLight intensity={0.5} />
             <directionalLight position={[4, 6, 6]} intensity={1.6} color="#cfe1ff" />
             <directionalLight position={[-5, 2, -3]} intensity={0.6} color="#2e6fe8" />
-            <Stars radius={60} depth={30} count={1200} factor={3} fade speed={0.6} />
+            <Stars radius={60} depth={30} count={coarse ? 500 : 1200} factor={3} fade speed={coarse ? 0 : 0.6} />
             <Suspense fallback={null}>
-              <VaultScene progress={progress} />
+              <VaultScene progress={progress} coarse={coarse} />
             </Suspense>
           </Canvas>
         </div>

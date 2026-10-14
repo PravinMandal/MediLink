@@ -36,10 +36,16 @@ export default async function AdminVerificationPage() {
     listPendingOrganizations(),
   ]);
 
-  const practitionerUserNames = pendingPractitioners.length
+  // Batched to exactly the pending rows: the old query scanned the whole
+  // user table (and shipped every user into the RSC payload) just to map
+  // a handful of practitioner userIds to emails.
+  const { inArray } = await import("drizzle-orm");
+  const pendingUserIds = [...new Set(pendingPractitioners.map((p) => p.userId))];
+  const practitionerUserNames = pendingUserIds.length
     ? await db
         .select({ id: userTable.id, name: userTable.name, email: userTable.email })
         .from(userTable)
+        .where(inArray(userTable.id, pendingUserIds))
     : [];
   const nameFor = new Map(practitionerUserNames.map((u) => [u.id, u]));
 

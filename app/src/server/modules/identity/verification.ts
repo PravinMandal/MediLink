@@ -124,60 +124,58 @@ export async function submitPractitionerVerification(input: {
   // unique): rejected doctors can resubmit corrected details as the UI
   // promises, and consent grants (keyed by practitioner id) survive.
   // New claims re-enter review — verified access pauses until re-approved.
+  // Practitioner row + history row + user trust flag commit atomically:
+  // a crash between them used to leave practitioners.verified while
+  // users.pending (split-brain trust) or a status with no provenance row.
   const [existing] = await db
     .select({ id: practitioners.id })
     .from(practitioners)
     .where(eq(practitioners.userId, input.userId));
-  const [practitioner] = existing
-    ? await db
-        .update(practitioners)
-        .set({
-          organizationId: input.organizationId ?? null,
-          fullName: input.fullName,
-          registrationNumber: input.registrationNumber,
-          council: input.council,
-          qualification: input.qualification,
-          specialty: input.specialty,
-          verificationStatus: status,
-          verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
-          verifiedBy: null,
-        })
-        .where(eq(practitioners.id, existing.id))
-        .returning()
-    : await db
-        .insert(practitioners)
-        .values({
-          userId: input.userId,
-          organizationId: input.organizationId ?? null,
-          fullName: input.fullName,
-          registrationNumber: input.registrationNumber,
-          council: input.council,
-          qualification: input.qualification,
-          specialty: input.specialty,
-          verificationStatus: status,
-          verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
-        })
-        .returning();
-
-  await db.insert(practitionerVerifications).values({
-    practitionerId: practitioner.id,
-    status:
-      decision.outcome === "auto_approved" ? "verified" : "pending",
-    notes: decision.notes,
-    evidence: { provider: provider.name, input: { ...input, userId: undefined } },
+  const verifiedAt = decision.outcome === "auto_approved" ? new Date() : null;
+  const practitioner = await db.transaction(async (tx) => {
+    const [p] = existing
+      ? await tx
+          .update(practitioners)
+          .set({
+            organizationId: input.organizationId ?? null,
+            fullName: input.fullName,
+            registrationNumber: input.registrationNumber,
+            council: input.council,
+            qualification: input.qualification,
+            specialty: input.specialty,
+            verificationStatus: status,
+            verifiedAt,
+            verifiedBy: null,
+          })
+          .where(eq(practitioners.id, existing.id))
+          .returning()
+      : await tx
+          .insert(practitioners)
+          .values({
+            userId: input.userId,
+            organizationId: input.organizationId ?? null,
+            fullName: input.fullName,
+            registrationNumber: input.registrationNumber,
+            council: input.council,
+            qualification: input.qualification,
+            specialty: input.specialty,
+            verificationStatus: status,
+            verifiedAt,
+          })
+          .returning();
+    await tx.insert(practitionerVerifications).values({
+      practitionerId: p!.id,
+      status:
+        decision.outcome === "auto_approved" ? "verified" : "pending",
+      notes: decision.notes,
+      evidence: { provider: provider.name, input: { ...input, userId: undefined } },
+    });
+    await tx
+      .update(users)
+      .set({ verificationStatus: status, updatedAt: new Date() })
+      .where(eq(users.id, input.userId));
+    return p!;
   });
-
-  if (decision.outcome === "auto_approved") {
-    await db
-      .update(users)
-      .set({ verificationStatus: "verified", updatedAt: new Date() })
-      .where(eq(users.id, input.userId));
-  } else {
-    await db
-      .update(users)
-      .set({ verificationStatus: "pending", updatedAt: new Date() })
-      .where(eq(users.id, input.userId));
-  }
 
   await audit.record({
     actorId: input.userId,
@@ -272,27 +270,31 @@ export async function createOrganization(input: {
   const provider = getVerificationProvider();
   const decision = await provider.verifyOrganization(input);
 
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: input.name,
-      type: input.type,
-      registrationNumber: input.registrationNumber,
-      addressLine: input.addressLine,
-      city: input.city,
-      state: input.state,
-      verificationStatus:
-        decision.outcome === "auto_approved" ? "verified" : "pending",
-      verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
-    })
-    .returning();
-
-  await db.insert(organizationVerifications).values({
-    organizationId: org.id,
-    submittedBy: input.createdByUserId,
-    status: decision.outcome === "auto_approved" ? "verified" : "pending",
-    notes: decision.notes,
-    evidence: { provider: provider.name },
+  // Org + verification history commit together: a crash between them
+  // stranded an org with no review trail.
+  const [org] = await db.transaction(async (tx) => {
+    const [o] = await tx
+      .insert(organizations)
+      .values({
+        name: input.name,
+        type: input.type,
+        registrationNumber: input.registrationNumber,
+        addressLine: input.addressLine,
+        city: input.city,
+        state: input.state,
+        verificationStatus:
+          decision.outcome === "auto_approved" ? "verified" : "pending",
+        verifiedAt: decision.outcome === "auto_approved" ? new Date() : null,
+      })
+      .returning();
+    await tx.insert(organizationVerifications).values({
+      organizationId: o!.id,
+      submittedBy: input.createdByUserId,
+      status: decision.outcome === "auto_approved" ? "verified" : "pending",
+      notes: decision.notes,
+      evidence: { provider: provider.name },
+    });
+    return [o!];
   });
 
   await audit.record({
@@ -388,20 +390,25 @@ export async function listVerifiedOrganizations() {
 }
 
 export async function joinOrganization(userId: string, organizationId: string) {
-  await db
-    .update(users)
-    .set({ organizationId, updatedAt: new Date() })
-    .where(eq(users.id, userId));
-  const [p] = await db
-    .select()
-    .from(practitioners)
-    .where(eq(practitioners.userId, userId));
-  if (p) {
-    await db
-      .update(practitioners)
-      .set({ organizationId })
-      .where(eq(practitioners.id, p.id));
-  }
+  // Both rows must agree on the clinician's org — a crash between them
+  // left user and practitioner rows pointing at different organizations,
+  // so consent reads and facility queues disagreed on membership.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ organizationId, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+    const [p] = await tx
+      .select()
+      .from(practitioners)
+      .where(eq(practitioners.userId, userId));
+    if (p) {
+      await tx
+        .update(practitioners)
+        .set({ organizationId })
+        .where(eq(practitioners.id, p.id));
+    }
+  });
 }
 
 export async function requireVerifiedPractitioner(userId: string) {

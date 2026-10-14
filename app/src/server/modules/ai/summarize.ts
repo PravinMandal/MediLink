@@ -492,34 +492,39 @@ export const summarizer = {
       claims = llm.claims;
     }
 
-    const [summary] = await db
-      .insert(aiSummaries)
-      .values({
-        patientId: input.patientId,
-        requestedById: input.requestedById,
-        question: input.question ?? null,
-        mode,
-        model,
-        sbar: {
-          situation: claims.filter((c) => c.section === "situation").map((c) => c.text).join(" "),
-          background: claims.filter((c) => c.section === "background").map((c) => c.text),
-          assessment: claims.filter((c) => c.section === "assessment").map((c) => c.text),
-          plan: claims.filter((c) => c.section === "plan").map((c) => c.text),
-        },
-      })
-      .returning();
-
-    if (claims.length) {
-      await db.insert(aiSummaryClaims).values(
-        claims.map((c, i) => ({
-          summaryId: summary.id,
-          section: c.section,
-          ordinal: i,
-          text: c.text,
-          sources: c.sources,
-        })),
-      );
-    }
+    // Summary + claims commit atomically: a crash between them used to
+    // leave a claim-less summary that reads as "nothing notable" — a
+    // clinical-safety misrepresentation, not a missing row.
+    const [summary] = await db.transaction(async (tx) => {
+      const [s] = await tx
+        .insert(aiSummaries)
+        .values({
+          patientId: input.patientId,
+          requestedById: input.requestedById,
+          question: input.question ?? null,
+          mode,
+          model,
+          sbar: {
+            situation: claims.filter((c) => c.section === "situation").map((c) => c.text).join(" "),
+            background: claims.filter((c) => c.section === "background").map((c) => c.text),
+            assessment: claims.filter((c) => c.section === "assessment").map((c) => c.text),
+            plan: claims.filter((c) => c.section === "plan").map((c) => c.text),
+          },
+        })
+        .returning();
+      if (claims.length) {
+        await tx.insert(aiSummaryClaims).values(
+          claims.map((c, i) => ({
+            summaryId: s!.id,
+            section: c.section,
+            ordinal: i,
+            text: c.text,
+            sources: c.sources,
+          })),
+        );
+      }
+      return [s!];
+    });
 
     return { summary, claims, mode };
   },

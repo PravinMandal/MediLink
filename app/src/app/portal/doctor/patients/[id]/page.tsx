@@ -161,7 +161,7 @@ export default async function DoctorPatientPage({
   const ageDob = age != null ? `${age}y · b. ${formatDate(patient.dob, "short")}` : "";
 
   // Fetch only what the consent allows — never query what the grantee can't see.
-  const [bloodGroup, allergies, meds, conds, summary, conflicts, span, openDisputes] = await Promise.all([
+  const [bloodGroup, allergies, meds, conds, summary, allConflicts, span, allDisputes] = await Promise.all([
     can("demographics") ? records.bloodGroup(patient.id, patient.bloodGroupSelfReported) : null,
     can("allergies") ? records.currentAllergies(patient.id) : [],
     can("medications") ? records.currentMedications(patient.id) : [],
@@ -173,6 +173,27 @@ export default async function DoctorPatientPage({
     can("conditions") ? records.encounterSpan(patient.id) : null,
     disputes.openForPatient(patient.id),
   ]);
+
+  // Conflicts and disputes reference cross-scope facts (a lab_value conflict
+  // names an analyte the grantee may not hold) — a narrow grant must not
+  // over-read them. Filter by the scope governing each item's kind/resource
+  // (emergency windows already restrict decision.scopes upstream).
+  const CONFLICT_SCOPE: Record<string, ConsentScope> = {
+    blood_group: "demographics",
+    allergy: "allergies",
+    duplicate_document: "documents",
+    lab_value: "lab_results",
+  };
+  const conflicts = allConflicts.filter((c) =>
+    scopes.includes(CONFLICT_SCOPE[c.kind] ?? "lab_results"),
+  );
+  const openDisputes = allDisputes.filter((d) => {
+    try {
+      return scopes.includes(scopeForResource(d.resourceType));
+    } catch {
+      return false; // unmapped resource type: fail closed
+    }
+  });
 
   // Human labels for the patient's open concerns (Backlog D): the search
   // index already carries a display label per clinical row — one query,

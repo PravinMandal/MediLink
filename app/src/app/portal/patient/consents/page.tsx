@@ -38,7 +38,12 @@ export default async function PatientAccessCentre() {
   const patient = await patientService.forUser(user.id);
   if (!patient) return <EmptyState title="No patient record linked to this account." />;
 
-  const pending = await accessRequestsService.pendingForPatient(patient.id);
+  // Pending + grants fan out together (independent once patient.id is
+  // known); artefacts load in one batched query, not N per-grant selects.
+  const [pending, grants] = await Promise.all([
+    accessRequestsService.pendingForPatient(patient.id),
+    consent.listForPatient(patient.id),
+  ]);
 
   // Mark requests as viewed (§7.8); tolerate individual failures.
   if (pending.length) {
@@ -49,22 +54,22 @@ export default async function PatientAccessCentre() {
     );
   }
 
-  const grants = await consent.listForPatient(patient.id);
-  const artifacts = await Promise.all(
-    grants.map(async (g) => {
-      if (g.status !== "active") return null;
-      try {
-        const a = await accessRequestsService.artifactForConsent(g.id);
-        if (!a) return null;
-        return {
-          code: a.receiptCode,
-          hashFragment: a.artifactSha256.slice(0, 12).toUpperCase(),
-        };
-      } catch {
-        return null;
-      }
-    }),
-  );
+  const activeIds = grants.filter((g) => g.status === "active").map((g) => g.id);
+  let artefactMap = new Map<string, { receiptCode: string | null; artifactSha256: string }>();
+  try {
+    artefactMap = await accessRequestsService.artifactsForConsents(activeIds);
+  } catch {
+    // Artefacts are receipt decoration — a failed batch must not fail the page.
+  }
+  const artifacts: Array<{ code: string; hashFragment: string } | null> = grants.map((g) => {
+    if (g.status !== "active") return null;
+    const a = artefactMap.get(g.id);
+    if (!a?.receiptCode) return null;
+    return {
+      code: a.receiptCode,
+      hashFragment: a.artifactSha256.slice(0, 12).toUpperCase(),
+    };
+  });
 
   const offeredScopes = OFFERED_SCOPES.map((s) => ({ scope: s, label: SCOPE_LABELS[s] }));
 
