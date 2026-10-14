@@ -59,11 +59,11 @@ export default function RootLayout({
         {/* Pre-hydration theme: reads localStorage/system before paint so
             dark mode never flashes. Must stay inline and blocking (it runs
             before any module loads, so it cannot import src/lib/theme —
-            but its keys MUST match THEME_STORAGE_KEY/TRANSPARENCY_STORAGE_KEY
-            there; a rename updates both). */}
+            but its key MUST match THEME_STORAGE_KEY there; a rename updates
+            both). Glass is unconditional: no transparency key is read. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";var t=localStorage.getItem("medilink-transparency");if(t==="reduced")document.documentElement.dataset.transparency="reduced";}catch(e){document.documentElement.dataset.theme="light";}})();`,
+            __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();`,
           }}
         />
       </head>

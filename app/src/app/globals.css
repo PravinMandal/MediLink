@@ -211,14 +211,10 @@ body {
 }
 
 /* ------------------------------------------------------------------------- */
-/* Reduce transparency — independent of theme (BuildPlan §7.2). User toggles  */
-/* data-transparency="reduced" on <html>; OS preference also honored.         */
-/* Elevated panels become solid; glass effects are removed.                   */
+/* Transparency fallbacks — glass is unconditional (no user toggle). The OS   */
+/* reduced-transparency preference is still honored: elevated panels go       */
+/* solid and glass effects are removed for users who need it there.           */
 /* ------------------------------------------------------------------------- */
-[data-transparency="reduced"] {
-  --surface-elevated-alpha: 1;
-}
-
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --surface-elevated-alpha: 1;
@@ -356,8 +352,7 @@ body {
 /* Utility classes for frosted surfaces that respect the transparency toggle.
    Tailwind opacity-suffix utilities plus backdrop-blur bypass the token
    system, so components that want glass should use these instead — they
-   collapse to opaque when data-transparency="reduced" (or the OS preference)
-   is set. */
+   collapse to opaque under the OS reduced-transparency preference. */
 .frost {
   background: color-mix(
     in srgb,
@@ -386,15 +381,6 @@ body {
     backdrop-filter: blur(22px) saturate(160%);
     -webkit-backdrop-filter: blur(22px) saturate(160%);
   }
-}
-
-[data-transparency="reduced"] .frost,
-html[data-transparency="reduced"] .frost,
-[data-transparency="reduced"] .frost-strong,
-html[data-transparency="reduced"] .frost-strong {
-  background: var(--surface-data);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -433,12 +419,6 @@ html[data-transparency="reduced"] .frost-strong {
     backdrop-filter: blur(14px) saturate(150%);
     -webkit-backdrop-filter: blur(14px) saturate(150%);
   }
-}
-
-[data-transparency="reduced"] .card,
-html[data-transparency="reduced"] .card {
-  background: var(--surface-data);
-  backdrop-filter: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -545,13 +525,7 @@ html[data-transparency="reduced"] .card {
   }
 }
 
-/* Reduce transparency / forced-colors: no glass at all. */
-[data-transparency="reduced"] .glass-shell,
-html[data-transparency="reduced"] .glass-shell {
-  background: var(--surface-elevated);
-  backdrop-filter: none;
-}
-
+/* OS reduced-transparency / forced-colors: no glass at all. */
 @media (prefers-reduced-transparency: reduce) {
   .glass-shell {
     background: var(--surface-elevated);

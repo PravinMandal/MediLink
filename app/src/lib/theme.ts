@@ -2,15 +2,13 @@
  * Shared theme core (single definition).
  *
  * ThemeToggle (header quick-flip) and ThemeSettings (profile picker) used to
- * carry their own copies of the storage keys and DOM writes — which drifted
- * (one read `dataset.transparency`, the other didn't; one deleted the
- * attribute, the other set "default"). Every reader/writer goes through here.
+ * carry their own copies of the storage keys and DOM writes — which drifted.
+ * Every reader/writer goes through here. Glass is unconditional: there is no
+ * transparency option, surfaces are always frosted.
  */
 export type ThemeChoice = "light" | "dark" | "system";
-export type TransparencyChoice = "default" | "reduced";
 
 export const THEME_STORAGE_KEY = "medilink-theme";
-export const TRANSPARENCY_STORAGE_KEY = "medilink-transparency";
 
 export function resolveIsDark(choice: ThemeChoice): boolean {
   if (typeof window === "undefined") return false;
@@ -26,24 +24,9 @@ export function applyThemeChoice(choice: ThemeChoice): void {
   document.documentElement.dataset.theme = resolveIsDark(choice) ? "dark" : "light";
 }
 
-/** Persist + apply a transparency choice. */
-export function applyTransparencyChoice(choice: TransparencyChoice): void {
-  localStorage.setItem(TRANSPARENCY_STORAGE_KEY, choice);
-  if (choice === "reduced") {
-    document.documentElement.dataset.transparency = "reduced";
-  } else {
-    delete document.documentElement.dataset.transparency;
-  }
-}
-
 /** Stored theme choice, defaulting to system. */
 export function storedThemeChoice(): ThemeChoice {
   return (localStorage.getItem(THEME_STORAGE_KEY) as ThemeChoice | null) ?? "system";
-}
-
-/** Stored transparency choice, defaulting to default. */
-export function storedTransparencyChoice(): TransparencyChoice {
-  return (localStorage.getItem(TRANSPARENCY_STORAGE_KEY) as TransparencyChoice | null) ?? "default";
 }
 
 /**

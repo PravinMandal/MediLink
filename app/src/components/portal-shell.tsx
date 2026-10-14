@@ -285,9 +285,10 @@ export function PortalShell({
       <div className="sticky top-0 z-20 hidden lg:block lg:pl-[248px]">
         {/* Solid surface (not frost): cross-origin document iframes scroll
             beneath this bar and backdrop-filter cannot sample them, so any
-            translucency ghosts iframe text through over the controls. */}
+            translucency ghosts iframe text through over the controls. h-16
+            matches the sidebar brand row so the two hairlines sit on one line. */}
         <div className="border-b border-line bg-paper-raised">
-          <div className="mx-auto flex max-w-[1180px] items-center justify-end gap-3 px-7 py-2.5">
+          <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-end gap-3 px-7">
             {notificationBell}
           </div>
         </div>

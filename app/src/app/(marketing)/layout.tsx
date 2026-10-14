@@ -40,7 +40,11 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-paper">
+    <div className="min-h-dvh bg-[#060a14]">
+      {/* Dark page base: the hero is obsidian and the sticky header is a
+          dark translucent shell — a light base bleeds through as a washed
+          gray/white band behind the navbar at scroll 0. Sections below the
+          hero keep their own explicit light/dark surfaces. */}
       <SmoothScroll />
       <a
         href="#main"
