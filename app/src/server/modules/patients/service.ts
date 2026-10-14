@@ -7,6 +7,9 @@ import { patients } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
 import { generatePatientCode } from "@/server/modules/identity/patient-code";
 
+/** Canonical self-reported blood groups (matches the profile form select). */
+const BLOOD_GROUPS = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
+
 export const patientService = {
   async create(input: {
     fullName: string;
@@ -75,9 +78,34 @@ export const patientService = {
       .from(patients)
       .where(and(eq(patients.id, patientId), eq(patients.userId, userId)));
     if (!row) throw new Error("ACCESS_DENIED");
+    // Service-level validation (the form constrains input, but direct POSTs
+    // bypass it): ABHA must be empty or exactly 14 digits (stored
+    // digits-only, matching the lookup's digit-equal comparison); blood group
+    // must be a known type; free-text fields are length-capped.
+    const clean: typeof patch = { ...patch };
+    if (clean.abhaNumber !== undefined) {
+      const digits = clean.abhaNumber.replace(/[^0-9]/g, "");
+      if (digits !== "" && digits.length !== 14) throw new Error("INVALID_ABHA");
+      clean.abhaNumber = digits;
+    }
+    if (
+      clean.bloodGroupSelfReported !== undefined &&
+      clean.bloodGroupSelfReported !== "" &&
+      !BLOOD_GROUPS.has(clean.bloodGroupSelfReported.trim().toUpperCase())
+    ) {
+      throw new Error("INVALID_BLOOD_GROUP");
+    }
+    if (clean.bloodGroupSelfReported) {
+      clean.bloodGroupSelfReported = clean.bloodGroupSelfReported.trim().toUpperCase();
+    }
+    for (const k of ["phone", "addressCity", "emergencyContactName", "emergencyContactPhone"] as const) {
+      if (typeof clean[k] === "string" && (clean[k] as string).length > 120) {
+        throw new Error("FIELD_TOO_LONG");
+      }
+    }
     const [updated] = await db
       .update(patients)
-      .set(patch)
+      .set(clean)
       .where(eq(patients.id, patientId))
       .returning();
     await audit.record({
@@ -90,22 +118,6 @@ export const patientService = {
       metadata: { fields: Object.keys(patch) },
     });
     return updated;
-  },
-
-  /** Link a patient app account to an existing patient record (identity claim). */
-  async linkAccount(patientId: string, userId: string) {
-    await db
-      .update(patients)
-      .set({ userId })
-      .where(eq(patients.id, patientId));
-    await audit.record({
-      actorId: userId,
-      actorRole: "patient",
-      patientId,
-      action: "patient.account.linked",
-      resourceType: "patient",
-      resourceId: patientId,
-    });
   },
 
   async count(): Promise<number> {

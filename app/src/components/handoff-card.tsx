@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { createHandoffAction } from "@/server/actions/discovery-actions";
+import { CopyButton } from "@/components/interactive";
 import { formatIst } from "@/lib/utils";
 
 /** Patient-present handoff (BuildPlan §8.2): single-use, 10-minute code. */
-export function HandoffCard() {
+export function HandoffCard({ patientCode }: { patientCode?: string | null }) {
   const [result, setResult] = useState<
     { code: string; expiresAt: string } | { message: string } | null
   >(null);
@@ -21,6 +22,22 @@ export function HandoffCard() {
 
   return (
     <div className="px-4 py-4 sm:px-5">
+      {patientCode ? (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-line bg-paper-sunk/60 px-3.5 py-2.5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+              Your Patient ID
+            </p>
+            <p className="num text-[15px] font-semibold tracking-wide text-ink">
+              {patientCode}
+            </p>
+          </div>
+          <CopyButton value={patientCode} label="Copy ID" />
+          <p className="w-full text-[11.5px] leading-relaxed text-ink-faint">
+            Read it to your clinician for lookup — or create a one-time code below.
+          </p>
+        </div>
+      ) : null}
       <p className="text-[13px] text-ink-soft">
         Sitting with a clinician? Create a one-time sharing code they can enter while you are
         there. The code is single-use and expires in 10 minutes.

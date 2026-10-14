@@ -47,6 +47,12 @@ npm run dev                 # http://localhost:3000
 Note: `db:migrate`/`db:seed` load `.env` — with `DATABASE_URL` set they
 target that Postgres (storage stays local unless SUPABASE_* vars are present).
 
+Social sign-in + verified email (optional, free tier): add `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` (Google Cloud console) and `RESEND_API_KEY`
+(resend.com) to `.env` — the Google/Apple buttons and the verification +
+password-reset mails activate automatically. Without them, email + password
+works with no setup and demo accounts keep working. See `.env.example`.
+
 Gates: `npm test` · `npx tsc --noEmit` · `npm run lint` · `npm run build` ·
 `node scripts/verify.mjs [baseUrl]` (behavioral suite, default localhost:3000).
 

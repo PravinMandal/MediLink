@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* App theme owns dark mode: `dark:` utilities respond to
+   <html data-theme="dark"> (the toggle), never the OS preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
  * MediLink product design system — "sapphire vault".
  *
@@ -647,4 +651,44 @@ html[data-transparency="reduced"] .glass-shell {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Cinematic theme transition — circular wipe from the toggle point.         */
+/* theme-toggle.tsx / theme-settings.tsx drive it via                      */
+/* document.startViewTransition(); unsupported browsers fall back to the    */
+/* instant swap (no flash — the pre-hydration script already set the mode). */
+/* ------------------------------------------------------------------------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(root) {
+  animation-name: theme-fade-out;
+}
+
+::view-transition-new(root) {
+  animation-name: theme-wipe-in;
+  clip-path: circle(0px at var(--theme-x, 50%) var(--theme-y, 0%));
+}
+
+@keyframes theme-fade-out {
+  to {
+    opacity: 0.4;
+  }
+}
+
+@keyframes theme-wipe-in {
+  to {
+    clip-path: circle(150vmax at var(--theme-x, 50%) var(--theme-y, 0%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.01ms;
+  }
 }

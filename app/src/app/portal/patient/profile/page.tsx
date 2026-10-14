@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
-import { PageHeader, Card, CardHeader, EmptyState, Badge } from "@/components/ui";
+import { PageHeader, Card, CardHeader, EmptyState } from "@/components/ui";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
 import { ProfileForm } from "@/components/patient-forms";
+import { CopyButton } from "@/components/interactive";
 import { ThemeSettings } from "@/components/theme-settings";
 import { formatDate } from "@/lib/utils";
 
@@ -30,18 +31,26 @@ export default async function PatientProfile() {
               ["Full name", patient.fullName],
               ["Date of birth", patient.dob ? formatDate(patient.dob) : "—"],
               ["Sex", patient.sex ?? "—"],
-              ["Patient ID", patient.id],
               ["Record created", formatDate(patient.createdAt)],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
                 <dt className="text-ink-soft">{k}</dt>
-                <dd className={"text-ink " + (k.includes("ID") ? "num text-xs" : "")}>{v}</dd>
+                <dd className="text-ink">{v}</dd>
               </div>
             ))}
+            {/* The shareable lookup identifier — never the internal UUID. */}
+            {patient.patientCode ? (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+                <dt className="text-ink-soft">Patient ID</dt>
+                <dd className="flex items-center gap-2">
+                  <span className="num text-[13px] font-semibold tracking-wide text-ink">
+                    {patient.patientCode}
+                  </span>
+                  <CopyButton value={patient.patientCode} label="Copy" />
+                </dd>
+              </div>
+            ) : null}
           </dl>
-          <div className="border-t border-line px-4 py-3 sm:px-5">
-            <Badge>ABHA linkage arrives with the ABDM integration</Badge>
-          </div>
         </Card>
         <Card>
           <CardHeader eyebrow="Editable" title="Contact details" />

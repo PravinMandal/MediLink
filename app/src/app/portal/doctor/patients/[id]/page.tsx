@@ -6,7 +6,7 @@ export const maxDuration = 60;
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   PageHeader,
   Card,
@@ -22,6 +22,7 @@ import {
   UploadDocumentForm,
   RequestAccessForm,
   BreakGlassForm,
+  ResolveDisputeForm,
 } from "@/components/doctor-forms";
 import { RecordSearchForm } from "@/components/record-search";
 import { RetryExtractionButton } from "@/components/retry-extraction";
@@ -35,11 +36,12 @@ import {
 import { CitationChipsInline } from "@/components/citation-chips-inline";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
-import { access, EMERGENCY_SCOPES, scopeForResource } from "@/server/modules/access/guard";
+import { access, scopeForResource } from "@/server/modules/access/guard";
 import { records } from "@/server/modules/records/service";
 import { search } from "@/server/modules/search/service";
 import { summarizer } from "@/server/modules/ai/summarize";
 import { contradictionEngine } from "@/server/modules/ai/contradictions";
+import { disputes } from "@/server/modules/records/versions";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
 import { consent, SCOPE_LABELS, type ConsentScope } from "@/server/modules/consent/service";
@@ -70,6 +72,14 @@ export default async function DoctorPatientPage({
   const { id } = await params;
   const { tab: rawTab, q: rawQ } = await searchParams;
   const user = await requireUser();
+
+  // P2: this workspace is clinician tooling — patients opening their own
+  // record here would get self-access plus doctor chrome (consent tooling,
+  // ABHA display). Send every role to its own home instead.
+  if (user.role !== "doctor") {
+    const { portalHomeForRole } = await import("@/server/session");
+    redirect(portalHomeForRole(user.role));
+  }
 
   const patient = await patientService.byId(id);
   if (!patient) notFound();
@@ -151,7 +161,7 @@ export default async function DoctorPatientPage({
   const ageDob = age != null ? `${age}y · b. ${formatDate(patient.dob, "short")}` : "";
 
   // Fetch only what the consent allows — never query what the grantee can't see.
-  const [bloodGroup, allergies, meds, conds, summary, conflicts, span] = await Promise.all([
+  const [bloodGroup, allergies, meds, conds, summary, conflicts, span, openDisputes] = await Promise.all([
     can("demographics") ? records.bloodGroup(patient.id, patient.bloodGroupSelfReported) : null,
     can("allergies") ? records.currentAllergies(patient.id) : [],
     can("medications") ? records.currentMedications(patient.id) : [],
@@ -161,7 +171,33 @@ export default async function DoctorPatientPage({
     summarizer.latestFor(patient.id, decision.scopes),
     contradictionEngine.openFor(patient.id),
     can("conditions") ? records.encounterSpan(patient.id) : null,
+    disputes.openForPatient(patient.id),
   ]);
+
+  // Human labels for the patient's open concerns (Backlog D): the search
+  // index already carries a display label per clinical row — one query,
+  // no schema guessing across nine clinical tables.
+  const disputeLabels = new Map<string, string>();
+  if (openDisputes.length) {
+    const { db } = await import("@/server/db");
+    const { searchChunks } = await import("@/server/db/schema");
+    const { inArray, and, eq } = await import("drizzle-orm");
+    const chunks = await db
+      .select({ recordId: searchChunks.recordId, label: searchChunks.label })
+      .from(searchChunks)
+      .where(
+        and(
+          eq(searchChunks.patientId, patient.id),
+          inArray(
+            searchChunks.recordId,
+            openDisputes.map((d) => d.resourceId),
+          ),
+        ),
+      );
+    for (const c of chunks) {
+      if (!disputeLabels.has(c.recordId)) disputeLabels.set(c.recordId, c.label);
+    }
+  }
 
   const activeConds = conds.filter((c) => c.status !== "resolved");
   const criticalAllergies = allergies.filter(
@@ -384,6 +420,33 @@ export default async function DoctorPatientPage({
         </div>
       ) : null}
 
+      {/* Patient concerns (Backlog D): what the patient flagged, with an
+          in-place review. Hidden during emergency windows — resolution is a
+          deliberative write, like contribute. */}
+      {openDisputes.length && !viaEmergency ? (
+        <Card className="mb-5 border-alert/40">
+          <CardHeader
+            eyebrow={`${openDisputes.length} open patient concern${openDisputes.length === 1 ? "" : "s"}`}
+            title="The patient flagged these records"
+            action={<Badge tone="alert">Needs review</Badge>}
+          />
+          <ul className="divide-y divide-line px-4 sm:px-5">
+            {openDisputes.map((d) => (
+              <li key={d.id} className="py-4">
+                <p className="text-sm font-semibold text-ink">
+                  {disputeLabels.get(d.resourceId) ?? d.resourceType.replace(/_/g, " ")}
+                </p>
+                <p className="mt-1 text-[13px] text-ink-soft">“{d.reason}”</p>
+                <p className="num mt-1 text-xs text-ink-faint">
+                  Flagged {formatDate(d.createdAt)}
+                </p>
+                <ResolveDisputeForm disputeId={d.id} patientId={patient.id} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
       {/* Tabs (URL-state) */}
       <SectionTabs
         tabs={TABS.map((t) => {
@@ -499,7 +562,7 @@ export default async function DoctorPatientPage({
         <div role="tabpanel" aria-label="Add or upload">
           <Alert tone="amber" title="Not available during emergency access">
             Emergency (break-glass) access is read-only over the critical data
-            set. Contributing records or documents requires the patient's
+            set. Contributing records or documents requires the patient&apos;s
             consent — request it once the patient can decide.
           </Alert>
         </div>

@@ -40,7 +40,7 @@ async function upsertConflict(input: {
       .update(conflicts)
       .set({ detectedAt: new Date() })
       .where(eq(conflicts.id, same.id));
-    return;
+    return key;
   }
   await db.insert(conflicts).values({
     patientId: input.patientId,
@@ -48,26 +48,30 @@ async function upsertConflict(input: {
     severity: input.severity ?? "warning",
     details: { ...input.details, _key: key },
   });
+  return key;
 }
 
 export const contradictionEngine = {
   /** Scan a patient's record and (re)populate open conflicts. */
   async detect(patientId: string): Promise<number> {
     let found = 0;
+    const reproduced = new Set<string>();
 
     // 1) Blood group conflicts
     const bg = await records.bloodGroup(patientId);
     if (bg.conflict) {
-      await upsertConflict({
-        patientId,
-        kind: "blood_group",
-        severity: "critical",
-        details: {
-          verified: bg.verified,
-          selfReported: bg.selfReported,
-          note: "Verified lab value differs from patient self-report. Verified value is displayed.",
-        },
-      });
+      reproduced.add(
+        await upsertConflict({
+          patientId,
+          kind: "blood_group",
+          severity: "critical",
+          details: {
+            verified: bg.verified,
+            selfReported: bg.selfReported,
+            note: "Verified lab value differs from patient self-report. Verified value is displayed.",
+          },
+        }),
+      );
       found++;
     }
 
@@ -90,20 +94,22 @@ export const contradictionEngine = {
           rows.map((r) => `${r.criticality ?? ""}|${r.reaction ?? ""}`),
         );
         if (distinct.size > 1) {
-          await upsertConflict({
-            patientId,
-            kind: "allergy",
-            severity: "warning",
-            details: {
-              substance,
-              entries: rows.map((r) => ({
-                criticality: r.criticality,
-                reaction: r.reaction,
-                trust: r.trust,
-                sourceDocumentId: r.sourceDocumentId,
-              })),
-            },
-          });
+          reproduced.add(
+            await upsertConflict({
+              patientId,
+              kind: "allergy",
+              severity: "warning",
+              details: {
+                substance,
+                entries: rows.map((r) => ({
+                  criticality: r.criticality,
+                  reaction: r.reaction,
+                  trust: r.trust,
+                  sourceDocumentId: r.sourceDocumentId,
+                })),
+              },
+            }),
+          );
           found++;
         }
       }
@@ -125,15 +131,17 @@ export const contradictionEngine = {
     }
     for (const [hash, rows] of byHash) {
       if (rows.length > 1) {
-        await upsertConflict({
-          patientId,
-          kind: "duplicate_document",
-          severity: "info",
-          details: {
-            hash: hash.slice(0, 12),
-            documents: rows.map((r) => ({ id: r.id, title: r.title })),
-          },
-        });
+        reproduced.add(
+          await upsertConflict({
+            patientId,
+            kind: "duplicate_document",
+            severity: "info",
+            details: {
+              hash: hash.slice(0, 12),
+              documents: rows.map((r) => ({ id: r.id, title: r.title })),
+            },
+          }),
+        );
         found++;
       }
     }
@@ -160,23 +168,55 @@ export const contradictionEngine = {
       if (rows.length > 1) {
         const values = new Set(rows.map((r) => Number(r.value)));
         if (values.size > 1) {
-          await upsertConflict({
-            patientId,
-            kind: "lab_value",
-            severity: "warning",
-            details: {
-              analyte: rows[0].name,
-              date: rows[0].effectiveDate,
-              values: rows.map((r) => ({
-                value: Number(r.value),
-                unit: r.unit,
-                trust: r.trust,
-                sourceDocumentId: r.sourceDocumentId,
-              })),
-            },
-          });
+          reproduced.add(
+            await upsertConflict({
+              patientId,
+              kind: "lab_value",
+              severity: "warning",
+              details: {
+                analyte: rows[0].name,
+                date: rows[0].effectiveDate,
+                values: rows.map((r) => ({
+                  value: Number(r.value),
+                  unit: r.unit,
+                  trust: r.trust,
+                  sourceDocumentId: r.sourceDocumentId,
+                })),
+              },
+            }),
+          );
           found++;
         }
+      }
+    }
+
+    // Reconciliation: close open conflicts this scan no longer reproduces
+    // (data was corrected or superseded). Rows without a content key predate
+    // keying and are left alone — unprovable either way. Evidence is
+    // preserved: the auto-resolution note merges into details.
+    const open = await db
+      .select({ id: conflicts.id, details: conflicts.details })
+      .from(conflicts)
+      .where(
+        and(eq(conflicts.patientId, patientId), eq(conflicts.status, "open")),
+      );
+    for (const row of open) {
+      const key = (row.details as Record<string, unknown> | null)?._key;
+      if (typeof key === "string" && !reproduced.has(key)) {
+        await db
+          .update(conflicts)
+          .set({
+            status: "resolved",
+            // NULL: no human resolved this — the re-scan did. resolved_by
+            // has a user FK, so there is no "system" sentinel value.
+            resolvedBy: null,
+            resolvedAt: new Date(),
+            details: {
+              ...((row.details as Record<string, unknown> | null) ?? {}),
+              resolutionNote: "No longer detected on re-scan.",
+            },
+          })
+          .where(eq(conflicts.id, row.id));
       }
     }
 

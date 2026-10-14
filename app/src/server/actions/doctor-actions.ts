@@ -465,7 +465,7 @@ export async function breakGlassAction(
 
   // High-assurance policy: fresh step-up authentication required.
   const { confirmStepUp, hasFreshStepUp } = await import("@/server/session");
-  if (!hasFreshStepUp(user.id)) {
+  if (!(await hasFreshStepUp(user.id))) {
     if (!stepUpPassword) {
       return {
         error:
@@ -476,9 +476,9 @@ export async function breakGlassAction(
     if (!ok) return { error: "Password check failed. Try again." };
   }
 
-  // Per-doctor abuse limit: at most 3 break-glass events per hour.
-  const { rateLimit } = await import("@/server/modules/identity/discovery");
-  if (!rateLimit(`breakglass:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })) {
+  // Per-doctor abuse limit, shared with the service-layer budget.
+  const { rateLimit, LIMITS } = await import("@/server/modules/security/rate-limit");
+  if (!rateLimit(`breakglass:${user.id}`, LIMITS.breakGlass)) {
     return {
       error:
         "Emergency access limit reached for this hour. If this is a genuine emergency, contact MediLink support.",
@@ -689,5 +689,80 @@ export async function correctRecordAction(
   revalidatePath("/portal/patient/record");
   return {
     ok: "Correction saved. The original stays on record, marked superseded.",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Patient dispute resolution (BuildPlan §7.10, Backlog D)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Resolve a patient's flagged concern. Only a verified practitioner with an
+ * active authorization on the record (consent or live emergency window) may
+ * resolve — via the same scope mapping as reads. Confirming keeps the
+ * dispute visible as confirmed (correction follows separately);
+ * dismissing requires notes for accountability.
+ */
+export async function resolveDisputeAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (user.role !== "doctor") return { error: "Only clinicians resolve concerns." };
+  const disputeId = String(formData.get("disputeId") ?? "").trim();
+  const patientId = String(formData.get("patientId") ?? "").trim();
+  const decision = String(formData.get("decision") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  if (!disputeId || !patientId) return { error: "Missing concern." };
+  if (decision !== "confirm" && decision !== "dismiss") {
+    return { error: "Choose whether the concern is confirmed or dismissed." };
+  }
+  if (decision === "dismiss" && notes.length < 5) {
+    return { error: "Dismissing needs a short note so the patient knows why." };
+  }
+
+  try {
+    await requireVerifiedPractitioner(user.id);
+    const { db } = await import("@/server/db");
+    const { dataDisputes } = await import("@/server/db/schema");
+    const { eq, and } = await import("drizzle-orm");
+    const [dispute] = await db
+      .select()
+      .from(dataDisputes)
+      .where(
+        and(eq(dataDisputes.id, disputeId), eq(dataDisputes.patientId, patientId)),
+      );
+    if (!dispute || dispute.status !== "open") {
+      return { error: "This concern is already handled or missing." };
+    }
+    // Scope check follows the disputed record kind — same mapping as reads.
+    await access.assert(
+      guardUser(user),
+      patientId,
+      scopeForResource(dispute.resourceType),
+    );
+    const { disputes } = await import("@/server/modules/records/versions");
+    await disputes.resolve({
+      disputeId: dispute.id,
+      resolvedBy: user.id,
+      status: decision === "confirm" ? "resolved_disputed" : "resolved_rejected",
+      notes: notes || undefined,
+    });
+  } catch (err) {
+    if (err instanceof AccessDeniedError)
+      return { error: "You don't have consent covering this record." };
+    if (err instanceof Error && err.message === "VERIFICATION_REQUIRED")
+      return { error: "Your practitioner verification is still pending." };
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    return { error: "Could not resolve the concern." };
+  }
+
+  revalidatePath(`/portal/doctor/patients/${patientId}`);
+  revalidatePath("/portal/patient/record");
+  return {
+    ok:
+      decision === "confirm"
+        ? "Concern confirmed and recorded — correct the record next if needed."
+        : "Concern dismissed with notes for the patient.",
   };
 }

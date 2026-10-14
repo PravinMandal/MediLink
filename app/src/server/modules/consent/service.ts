@@ -53,6 +53,31 @@ export const consent = {
     granteeName?: string;
     granteeUserId?: string | null;
   }) {
+    // P1: the service is the last line of defense — validate everything
+    // here, not just in the action caller. Ownership (patientUserId owns
+    // patientId) stays caller-enforced: grants for not-yet-linked patients
+    // are a supported flow, and every production caller proves ownership
+    // via patientService.forUser first.
+    const scopes = [...new Set(input.scopes)].filter((s): s is ConsentScope =>
+      (OFFERED_SCOPES as readonly string[]).includes(s),
+    );
+    if (!scopes.length) throw new Error("No valid scopes to grant.");
+    const days = Math.min(Math.max(Math.floor(input.days) || 7, 1), 365);
+    if (input.granteeType === "practitioner") {
+      if (!input.granteePractitionerId) throw new Error("Missing practitioner.");
+      const [p] = await db
+        .select({ id: practitioners.id })
+        .from(practitioners)
+        .where(eq(practitioners.id, input.granteePractitionerId));
+      if (!p) throw new Error("Practitioner not found.");
+    } else {
+      if (!input.granteeOrganizationId) throw new Error("Missing organization.");
+      const [o] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, input.granteeOrganizationId));
+      if (!o) throw new Error("Organization not found.");
+    }
     const [row] = await db
       .insert(consents)
       .values({
@@ -60,9 +85,9 @@ export const consent = {
         granteeType: input.granteeType,
         granteePractitionerId: input.granteePractitionerId ?? null,
         granteeOrganizationId: input.granteeOrganizationId ?? null,
-        scopes: input.scopes,
+        scopes,
         purpose: input.purpose,
-        expiresAt: new Date(Date.now() + input.days * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
       })
       .returning();
 
@@ -81,9 +106,9 @@ export const consent = {
         metadata: {
           granteeType: input.granteeType,
           grantee: input.granteePractitionerId ?? input.granteeOrganizationId,
-          scopes: input.scopes,
+          scopes,
           purpose: input.purpose,
-          days: input.days,
+          days,
         },
       });
     } catch (err) {
@@ -95,7 +120,7 @@ export const consent = {
         userId: input.granteeUserId,
         type: "consent.granted",
         title: `A patient granted you access`,
-        body: `Scope: ${input.scopes.join(", ")} · valid ${input.days} days`,
+        body: `Scope: ${scopes.join(", ")} · valid ${days} days`,
         link: "/portal/doctor",
       });
     }
@@ -117,7 +142,7 @@ export const consent = {
       .select({ id: patients.id })
       .from(patients)
       .where(and(eq(patients.id, row.patientId), eq(patients.userId, patientUserId)));
-    if (!owner) throw new Error("ACCESS_DENIED");
+    if (!owner) throw new Error("Consent not found");
 
     const [updated] = await db
       .update(consents)

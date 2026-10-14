@@ -12,31 +12,28 @@ await page.goto(base + "/sign-up");
 await page.fill('input[name="name"]', "Dr. E2E Verma");
 await page.fill('input[name="email"]', email);
 await page.fill('input[name="password"]', "Password123!");
-// select doctor role (aria-pressed toggle buttons)
-const doctorBtn = page.getByRole("button", { name: /^Doctor/ }).first();
+// select doctor role (radiogroup: buttons with role="radio")
+const doctorBtn = page.getByRole("radio", { name: /^Doctor/ }).first();
 if (await doctorBtn.count()) await doctorBtn.click();
 await page.click('button[type="submit"]');
 await page.waitForTimeout(4000);
 check("signup lands somewhere signed-in", !/sign-in|sign-up/.test(page.url()));
 const landed = page.url();
 console.log("landed:", landed);
-check("doctor lands on verification flow", /verification|doctor/.test(landed));
+check("doctor lands on verification flow", /verification/.test(landed));
+// 1b. Submit the council-registration form so a practitioner row exists.
+// (Scope to main: the rail's Sign-out is also a submit button.)
+await page.fill('main input[name="fullName"]', "Dr. E2E Verma");
+await page.fill('main input[name="registrationNumber"]', `E2E/${Date.now().toString().slice(-6)}`);
+await page.fill('main input[name="council"]', "Test Medical Council");
+await page.click('main button[type="submit"]');
+await page.waitForTimeout(3000);
+// 2. Auto-verification: the default mock provider approves plausible
+// registrations, so the doctor lands verified (the pending-queue +
+// admin-approval leg only runs under VERIFICATION_PROVIDER=manual_review
+// and is covered by the unit suite, not this script).
+const statusText = await page.evaluate(() => document.body.innerText);
+check("mock auto-verifies plausible registration", /Verified practitioner/i.test(statusText));
 await page.close();
-
-// 2. Admin approves (via practitioner queue)
-const admin = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-await admin.goto(base + "/sign-in");
-await admin.fill('input[type="email"]', "admin@medilink.health");
-await admin.fill('input[type="password"]', "Password123!");
-await admin.click('button[type="submit"]');
-await admin.waitForTimeout(3000);
-const queueText = await admin.evaluate(() => document.body.innerText);
-const inQueue = /E2E Verma/i.test(queueText);
-check("new doctor appears in admin queue", inQueue);
-// Note: a doctor signup without a submitted verification form has no
-// practitioner row; the queue check below only applies once submitted. The
-// signup journey expectation is the verification prompt, handled at step 1.
-void inQueue;
-await admin.close();
 await browser.close();
 process.exit(failures ? 1 : 0);

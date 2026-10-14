@@ -2,7 +2,11 @@
 import { chromium } from "playwright";
 const base = "http://localhost:3000";
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+// Reduced motion: scroll reveals settle instantly, so axe measures the
+// honest end-state instead of sampling mid-fade opacities (axe factors
+// opacity into contrast; below-fold reveals rest at opacity 0 until
+// scrolled, and font-swap shifts make the sample a race).
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
 // inject axe from node_modules
 const { readFile } = await import("node:fs/promises");
 const axeSrc = await readFile("node_modules/axe-core/axe.js", "utf8");

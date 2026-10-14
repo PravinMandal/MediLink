@@ -47,14 +47,13 @@ await page.fill('input[type="email"]', "meera@medilink.health");
 await page.fill('input[type="password"]', "Password123!");
 await page.click('button[type="submit"]');
 await page.waitForTimeout(2500);
-// toggle dark via portal header
-await page.locator('button[aria-label*="theme" i]').first().click();
+// toggle dark via portal header (two toggles render — mobile + desktop bar,
+// one hidden per breakpoint — so scope to the visible one)
+await page.locator('button[aria-label*="theme" i]:visible').first().click();
 await page.waitForTimeout(500);
 console.log("portal theme:", await page.evaluate(() => document.documentElement.dataset.theme));
-// doctor record
-const q = page.locator('input[name="q"], input[type="search"]').first();
-await q.fill("Rahul");
-await q.press("Enter");
+// doctor record (via workspace — the home has identifier lookup, no search)
+await page.goto(base + "/portal/doctor/patients", { waitUntil: "networkidle" });
 await page.waitForTimeout(1500);
 await page.locator('a[href*="/portal/doctor/patients/"]').first().click();
 await page.waitForTimeout(2500);

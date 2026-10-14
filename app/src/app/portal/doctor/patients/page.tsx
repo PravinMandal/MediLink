@@ -5,7 +5,7 @@ import Link from "next/link";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { ArrowRight, FileClock, ShieldAlert, Users } from "lucide-react";
 import { PageHeader, Card, CardHeader, EmptyState, Badge } from "@/components/ui";
-import { requireUser } from "@/server/session";
+import { requireRole } from "@/server/session";
 import { db } from "@/server/db";
 import { consents, patients } from "@/server/db/schema";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
@@ -29,7 +29,7 @@ const PURPOSE_LABEL: Record<string, string> = {
  * practitioner. Names appear because consent exists; nothing pre-consent.
  */
 export default async function MyPatientsPage() {
-  const user = await requireUser();
+  const user = await requireRole("doctor");
   const practitioner = await getPractitionerForUser(user.id);
 
   const grants = practitioner

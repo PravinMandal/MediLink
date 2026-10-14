@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Card, CardHeader } from "@/components/ui";
-import { requireUser } from "@/server/session";
+import { getSessionUser } from "@/server/session";
 import { emergencyCard } from "@/server/modules/identity/emergency-card";
 import { audit } from "@/server/modules/audit/service";
 
@@ -27,7 +27,11 @@ export default async function EmergencyScanPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const user = await requireUser();
+  // Preserve the scan across login: an unauthenticated treating clinician
+  // returns here after sign-in instead of losing the emergency context.
+  // (requireUser() would drop the token with a bare /sign-in redirect.)
+  const user = await getSessionUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(`/e/${token}`)}`);
 
   if (user.role !== "doctor") {
     return (
@@ -43,7 +47,7 @@ export default async function EmergencyScanPage({
     );
   }
 
-  const resolved = await emergencyCard.resolve(token);
+  const resolved = await emergencyCard.resolve(token, { actorId: user.id });
   if (!resolved) {
     // Uniform outcome for unknown AND revoked tokens; audited upstream.
     return (

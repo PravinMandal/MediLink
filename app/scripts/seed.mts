@@ -54,10 +54,17 @@ async function main() {
     if (!id) throw new Error(`Failed to create user ${email}`);
     // role is input:false in auth config (signups are patients by default);
     // seeding grants professional roles directly, mirroring admin grants.
+    // Demo accounts are pre-verified: production enforces email verification
+    // once RESEND_API_KEY is set, and the seeded logins must keep working.
     if (role !== "patient") {
       await db
         .update(schema.user)
-        .set({ role: role as typeof schema.user.$inferSelect.role })
+        .set({ role: role as typeof schema.user.$inferSelect.role, emailVerified: true })
+        .where(sql`${schema.user.id} = ${id}`);
+    } else {
+      await db
+        .update(schema.user)
+        .set({ emailVerified: true })
         .where(sql`${schema.user.id} = ${id}`);
     }
     return id;

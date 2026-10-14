@@ -77,15 +77,22 @@ function claimWithinScopes(claim: Claim, scopes: ConsentScope[] | null): boolean
 
 /**
  * D3 stored-summary gate: every scope a stored claim covers must be within
- * the granted scopes. Uncited claims (conflict notices) carry no scope, so
- * they are permitted.
+ * the granted scopes. Uncited claims (absence notices, conflict flags) were
+ * generated from the full record, so they replay only into a full grant
+ * (caller holds every ALL_SCOPE) or unrestricted self-access — never into
+ * a partial grant where they would leak cross-scope existence signals.
  */
 function claimsWithinScopes(
   claims: Array<{ sources: ClaimSource[] }>,
   scopes: ConsentScope[],
 ): boolean {
+  const fullGrant = (
+    ["demographics", "conditions", "allergies", "medications", "lab_results", "imaging", "procedures", "documents"] as const
+  ).every((s) => (scopes as readonly string[]).includes(s));
   return claims.every((c) =>
-    c.sources.every((s) => scopes.includes(scopeForResource(s.recordType))),
+    c.sources.length === 0
+      ? fullGrant
+      : c.sources.every((s) => scopes.includes(scopeForResource(s.recordType))),
   );
 }
 
@@ -257,8 +264,7 @@ async function buildDeterministic(
     .filter(([name, points]) => points.length >= 2 && matchesFocus(name))
     .slice(0, 6);
   for (const [name, points] of trendEntries) {
-    const src = points.map<{ o: (typeof obs)[number] } | null>(() => null);
-    // Recover observation rows for citations
+    // Recover observation rows for citations (same analyte, newest first).
     const rows = obs.filter((o) => o.name === name).slice(0, points.length);
     const first = points[0];
     const last = points[points.length - 1];
@@ -286,7 +292,6 @@ async function buildDeterministic(
         trust: o.trust,
       })),
     });
-    void src;
   }
 
   // Latest abnormal labs not already covered by a trend claim

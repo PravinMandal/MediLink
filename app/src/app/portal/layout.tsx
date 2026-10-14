@@ -47,6 +47,23 @@ export default async function PortalLayout({
         </>
       }
     >
+      {!user.emailVerified ? (
+        <div
+          role="status"
+          className="mb-5 flex flex-col gap-2 rounded-2xl border border-amber/40 bg-amber-tint px-4 py-3 text-[13px] leading-relaxed text-ink sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>
+            <strong className="font-semibold">Verify your email</strong> — it protects
+            password resets and emergency alerts. Check your inbox (and spam).
+          </span>
+          <a
+            href={`/verify-email?email=${encodeURIComponent(user.email)}`}
+            className="shrink-0 rounded-xl border border-line-strong bg-paper-raised px-3.5 py-2 text-[12.5px] font-semibold text-ink transition-colors hover:border-pine hover:text-pine"
+          >
+            Resend link
+          </a>
+        </div>
+      ) : null}
       {children}
     </PortalShell>
   );

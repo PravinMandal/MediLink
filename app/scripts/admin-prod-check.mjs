@@ -8,8 +8,11 @@ await page.fill('input[type="email"]', "admin@medilink.health");
 await page.fill('input[type="password"]', "Password123!");
 await page.click('button[type="submit"]');
 await page.waitForTimeout(3000);
+// Event detail lives on the Emergency review page (overview shows counts).
+await page.goto(base + "/portal/admin/emergency", { waitUntil: "networkidle" });
+await page.waitForTimeout(1500);
 const txt = await page.evaluate(() => document.body.innerText);
-console.log("break-glass event present:", /Emergency access events \([1-9]/i.test(txt));
+console.log("break-glass event present:", /Break-glass history \([1-9]/i.test(txt));
 console.log("reviewer note shown:", /Reviewer note:/.test(txt));
 console.log("notified state explicit:", /notified /.test(txt) && !/notified\s+—\s*$/m.test(txt));
 console.log("audit stream has actor:", /Dr\.|Platform Admin/.test(txt));

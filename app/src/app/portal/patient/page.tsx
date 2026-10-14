@@ -203,7 +203,7 @@ export default async function PatientDashboard() {
             eyebrow="Patient ID handoff"
             title="Share with a clinician now"
           />
-          <HandoffCard />
+          <HandoffCard patientCode={patient.patientCode} />
         </Card>
 
         {/* Conditions */}

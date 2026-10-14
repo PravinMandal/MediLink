@@ -5,11 +5,12 @@
  * time-boxed access to the critical emergency profile → patient notified →
  * event lands in the review queue. Every access is audited.
  */
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   emergencyAccessEvents,
   patients,
+  practitioners,
   user as userTable,
 } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
@@ -21,6 +22,33 @@ import { records } from "@/server/modules/records/service";
 const BREAK_GLASS_WINDOW_MINUTES = 60;
 
 export const emergency = {
+  /**
+   * A live (unexpired, not-flagged) break-glass window for this
+   * practitioner+patient, if any. Shared by arming (idempotency) and by
+   * discovery (a clinician with a live window routes straight to the record
+   * instead of a dead-end "request access").
+   */
+  async liveFor(practitionerId: string, patientId: string) {
+    const [live] = await db
+      .select()
+      .from(emergencyAccessEvents)
+      .where(
+        and(
+          eq(emergencyAccessEvents.practitionerId, practitionerId),
+          eq(emergencyAccessEvents.patientId, patientId),
+          gt(emergencyAccessEvents.expiresAt, new Date()),
+          or(
+            isNull(emergencyAccessEvents.reviewStatus),
+            eq(emergencyAccessEvents.reviewStatus, "pending"),
+            eq(emergencyAccessEvents.reviewStatus, "reviewed"),
+          ),
+        ),
+      )
+      .orderBy(desc(emergencyAccessEvents.accessedAt))
+      .limit(1);
+    return live ?? null;
+  },
+
   async breakGlass(input: {
     practitionerId: string;
     practitionerUserId: string;
@@ -36,6 +64,16 @@ export const emergency = {
       .from(patients)
       .where(eq(patients.id, input.patientId));
     if (!patient) throw new Error("Patient not found");
+
+    // P1: the service is callable directly — never arm break-glass for an
+    // unverified practitioner here, regardless of what the caller checked.
+    const [pract] = await db
+      .select({ verificationStatus: practitioners.verificationStatus })
+      .from(practitioners)
+      .where(eq(practitioners.id, input.practitionerId));
+    if (!pract || pract.verificationStatus !== "verified") {
+      throw new Error("VERIFICATION_REQUIRED");
+    }
 
     // A flagged (investigated as improper) break-glass on this patient by
     // this practitioner blocks arming a new one — no indefinite renewal.
@@ -54,6 +92,12 @@ export const emergency = {
         "A previous emergency access on this patient was flagged for review. Contact the platform administrator.",
       );
     }
+
+    // P1: arming is idempotent per practitioner+patient window — a live event
+    // is returned as-is instead of stacking overlapping windows (each of
+    // which would re-notify the patient and widen the audit surface).
+    const live = await emergency.liveFor(input.practitionerId, input.patientId);
+    if (live) return live;
 
     const now = new Date();
     const expiresAt = new Date(
@@ -150,13 +194,16 @@ export const emergency = {
       .where(eq(patients.id, patientId));
     if (!patient) throw new Error("Patient not found");
 
-    const [bloodGroup, allergies, meds, conds, procs, obs] = await Promise.all([
+    const [bloodGroup, allergies, meds, conds, obs] = await Promise.all([
       records.bloodGroup(patientId),
       records.currentAllergies(patientId),
       records.currentMedications(patientId),
       records.currentConditions(patientId),
-      records.proceduresFor(patientId),
-      records.observationsFor(patientId, 60),
+      // P1: read only what EMERGENCY_SCOPES authorizes. Procedures are NOT in
+      // the emergency set, so they are neither fetched nor returned here —
+      // adding them needs a clinical-safety decision + scope-contract change,
+      // not a quiet payload addition. Observations feed the 5 key labs only.
+      records.observationsFor(patientId, 30),
     ]);
 
     // Most recent creatinine / HbA1c / glucose if present
@@ -186,10 +233,6 @@ export const emergency = {
       conditions: conds
         .filter((c) => c.status !== "resolved")
         .map((c) => ({ name: c.name, status: c.status, since: c.onsetDate })),
-      majorProcedures: procs.map((p) => ({
-        name: p.name,
-        date: p.performedDate,
-      })),
       keyLabs: [
         pickLatest(/creatinine/),
         pickLatest(/hba1c/),
@@ -215,18 +258,9 @@ export const emergency = {
   },
 
   async activeForPractitioner(practitionerId: string, patientId: string) {
-    const [row] = await db
-      .select()
-      .from(emergencyAccessEvents)
-      .where(
-        and(
-          eq(emergencyAccessEvents.practitionerId, practitionerId),
-          eq(emergencyAccessEvents.patientId, patientId),
-          gt(emergencyAccessEvents.expiresAt, new Date()),
-        ),
-      )
-      .orderBy(desc(emergencyAccessEvents.accessedAt));
-    return row ?? null;
+    // Single definition of "live window" (see liveFor): a flagged event is
+    // under abuse review and must not read as active to callers.
+    return emergency.liveFor(practitionerId, patientId);
   },
 
   async pendingReview(limit = 100) {

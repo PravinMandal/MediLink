@@ -6,8 +6,14 @@
  * a scan only ever routes an authenticated clinician to the audited
  * emergency-access path for the one patient the token maps to. The raw token
  * is stored so the card re-renders identically (a printed card keeps
- * working); rotation is an explicit patient action for lost cards, and the
- * SHA-256 hash index means a stolen database does not enable token forgery.
+ * working); rotation is an explicit patient action for lost cards.
+ *
+ * Threat model, stated honestly: the token is a routing identifier, not a
+ * secret — a database read exposes it. That exposure alone opens no records:
+ * every use still requires an authenticated, verified clinician, a stated
+ * reason, a fresh password step-up, per-hour abuse limits, patient
+ * notification, and admin review. The SHA-256 hash column exists so lookups
+ * can migrate to hash-only verification later without re-issuing cards.
  */
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -105,7 +111,14 @@ export const emergencyCard = {
    * Resolve a scanned token to its patient. Records usage for abuse review;
    * unknown and revoked tokens produce the identical outcome.
    */
-  async resolve(token: string): Promise<{ patientId: string } | null> {
+  async resolve(token: string, opts?: { actorId?: string }): Promise<{ patientId: string } | null> {
+    // P2: resolving is cheap and unauthenticated-adjacent — bound scans per
+    // clinician so token-guessing cannot spam the audit log. Malformed
+    // tokens still return null silently (no audit write at all).
+    if (opts?.actorId) {
+      const { rateLimit, LIMITS } = await import("@/server/modules/security/rate-limit");
+      if (!rateLimit(`emgcard:${opts.actorId}`, LIMITS.cardScan)) return null;
+    }
     const trimmed = token.trim().toLowerCase();
     if (!trimmed || !/^[0-9a-f]{40}$/.test(trimmed)) return null;
     const [row] = await db

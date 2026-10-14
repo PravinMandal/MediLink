@@ -14,6 +14,7 @@ import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   emergencyAccessEvents,
+  organizations,
   patientIdentityState,
   accessPolicyEvaluations,
 } from "@/server/db/schema";
@@ -148,6 +149,21 @@ export const policy = {
         await record(d, ctx, patientId, action, wanted);
         return d;
       }
+      // Same class as the practitioner gate below: a pending/rejected facility
+      // must not read through grants, even with a membership row.
+      const [org] = await db
+        .select({ verificationStatus: organizations.verificationStatus })
+        .from(organizations)
+        .where(eq(organizations.id, ctx.organizationId));
+      if (!org || org.verificationStatus !== "verified") {
+        const d = deny(
+          ctx,
+          "organization_unverified",
+          "Your facility's verification is still pending. Clinical access unlocks once it is approved.",
+        );
+        await record(d, ctx, patientId, action, wanted);
+        return d;
+      }
       // Identity caution blocks professional access pending review (§8.1).
       const caution = await identityCaution(patientId);
       if (caution) {
@@ -185,6 +201,18 @@ export const policy = {
       const practitioner = await getPractitionerForUser(ctx.actorId);
       if (!practitioner) {
         const d = deny(ctx, "no_practitioner_profile", "Practitioner profile missing or unverified.");
+        await record(d, ctx, patientId, action, wanted);
+        return d;
+      }
+      // P0: existence is not trust. Only a verified practitioner may read
+      // through consent or emergency — self-registered, pending, or rejected
+      // doctors are denied even when a stale grant names them.
+      if (practitioner.verificationStatus !== "verified") {
+        const d = deny(
+          ctx,
+          "practitioner_unverified",
+          "Your clinician verification is still pending. Clinical access unlocks once it is approved.",
+        );
         await record(d, ctx, patientId, action, wanted);
         return d;
       }

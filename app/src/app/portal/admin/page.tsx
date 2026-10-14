@@ -38,10 +38,10 @@ export default async function AdminPage() {
     );
   }
 
-  const [pendingPractitioners, pendingOrgs, pendingEmergency] = await Promise.all([
+  const [pendingPractitioners, pendingOrgs, allPendingEmergency] = await Promise.all([
     listPendingPractitioners(),
     listPendingOrganizations(),
-    emergency.pendingReview(5),
+    emergency.pendingReview(1000),
   ]);
 
   const queues = [
@@ -71,10 +71,12 @@ export default async function AdminPage() {
     },
   ];
 
-  // Count all pending emergencies (not just the 5 fetched).
-  const allPending = await emergency.pendingReview(1000);
-  queues[1]!.count = allPending.length;
-  queues[1]!.urgent = allPending.length > 0;
+  // Inline: the five longest-waiting events (pendingReview is newest-first).
+  const oldestPending = [...allPendingEmergency]
+    .sort((a, b) => a.accessedAt.getTime() - b.accessedAt.getTime())
+    .slice(0, 5);
+  queues[1]!.count = allPendingEmergency.length;
+  queues[1]!.urgent = allPendingEmergency.length > 0;
 
   return (
     <>
@@ -126,7 +128,7 @@ export default async function AdminPage() {
       </div>
 
       {/* Most urgent emergency events inline */}
-      {pendingEmergency.length ? (
+      {oldestPending.length ? (
         <Card className="mt-6">
           <CardHeader
             eyebrow="Oldest first matters here"
@@ -138,7 +140,7 @@ export default async function AdminPage() {
             }
           />
           <ul className="divide-y divide-line">
-            {pendingEmergency.slice(0, 5).map((e) => (
+            {oldestPending.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm sm:px-5">
                 <Badge tone="alert">break-glass</Badge>
                 <span className="num text-[12px] text-ink-faint">{formatWhen(e.accessedAt)}</span>

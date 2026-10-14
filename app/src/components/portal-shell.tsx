@@ -278,16 +278,25 @@ export function PortalShell({
         </nav>
       </header>
 
-      {/* Desktop header strip (bell only; nav lives in the rail) */}
-      <div className="pointer-events-none sticky top-0 z-20 hidden h-0 lg:block">
-        <div className="pointer-events-auto absolute right-6 top-4 flex items-center gap-3">
-          {notificationBell}
+      {/* Desktop header strip (bell only; nav lives in the rail). A real
+          bar with reserved height — never a zero-height overlay — so page
+          content (e.g. the consent banner) can't scroll underneath the
+          controls. */}
+      <div className="sticky top-0 z-20 hidden lg:block lg:pl-[248px]">
+        {/* Solid surface (not frost): cross-origin document iframes scroll
+            beneath this bar and backdrop-filter cannot sample them, so any
+            translucency ghosts iframe text through over the controls. */}
+        <div className="border-b border-line bg-paper-raised">
+          <div className="mx-auto flex max-w-[1180px] items-center justify-end gap-3 px-7 py-2.5">
+            {notificationBell}
+          </div>
         </div>
       </div>
 
       <main id="main" className="min-h-dvh lg:pl-[248px]">
-        <div className="mx-auto max-w-[1180px] px-4 py-7 sm:px-7 lg:py-9">{children}</div>
+        <div className="mx-auto max-w-[1180px] animate-[page-in_0.45s_cubic-bezier(0.22,1,0.36,1)_both] px-4 py-7 sm:px-7 lg:py-9">{children}</div>
       </main>
+      <style>{`@keyframes page-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}`}</style>
     </div>
   );
 }

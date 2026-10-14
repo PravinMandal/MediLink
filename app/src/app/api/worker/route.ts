@@ -126,7 +126,7 @@ function registerHandlers() {
 let handlersRegistered = false;
 
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET?.trim();
   if (process.env.NODE_ENV === "production" && !secret) {
     // An open worker endpoint would let anyone burn LLM quota and trigger
     // notification fan-out. In production the secret is mandatory.
@@ -134,8 +134,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "worker not configured" }, { status: 503 });
   }
   if (secret) {
+    // Vercel Cron cannot send custom Authorization headers, while external
+    // schedulers (cron-job.org) can. Accept Bearer (preferred), the
+    // x-cron-secret header, or ?cronSecret= as a last resort for schedulers
+    // that only support URL configuration. The secret VALUE is never logged;
+    // Vercel access logs record that the endpoint was hit.
+    const url = new URL(request.url);
     const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
+    const headerSecret = request.headers.get("x-cron-secret");
+    const querySecret = url.searchParams.get("cronSecret") ?? url.searchParams.get("secret");
+    const ok =
+      auth === `Bearer ${secret}` ||
+      headerSecret === secret ||
+      (querySecret !== null && querySecret === secret);
+    if (!ok) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
   }

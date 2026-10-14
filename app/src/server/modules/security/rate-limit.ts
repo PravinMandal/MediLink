@@ -44,6 +44,12 @@ export const LIMITS = {
   accessRequest: { windowMs: 60_000, max: 5 },
   /** Break-glass emergency initiations per doctor. */
   breakGlass: { windowMs: 3_600_000, max: 3 },
+  /** Step-up password confirmations per user (guessing-resistant). */
+  stepUp: { windowMs: 10 * 60_000, max: 5 },
+  /** Email auth attempts per address (sign-in / sign-up / resend). */
+  auth: { windowMs: 60_000, max: 10 },
+  /** Emergency-card scans per clinician. */
+  cardScan: { windowMs: 60_000, max: 20 },
   /** Source-document opens/downloads per user. */
   fileDownload: { windowMs: 60_000, max: 30 },
 } as const;

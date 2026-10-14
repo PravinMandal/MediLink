@@ -36,6 +36,24 @@ export async function runStructuredExtraction(
     .where(eq(documents.id, documentId));
   if (!doc?.textExtract) return { skipped: "no extracted text" };
 
+  // Idempotency per document: the observation batch below is a single atomic
+  // INSERT, so a crash can only strand either zero rows (safe to re-run) or
+  // the complete set (must skip, not duplicate). A redelivered job after a
+  // post-commit crash would otherwise double every extracted field.
+  const { observations } = await import("@/server/db/schema");
+  const { and, isNull } = await import("drizzle-orm");
+  const [prior] = await db
+    .select({ id: observations.id })
+    .from(observations)
+    .where(
+      and(
+        eq(observations.sourceDocumentId, documentId),
+        isNull(observations.supersededById),
+      ),
+    )
+    .limit(1);
+  if (prior) return { skipped: "already extracted", documentId };
+
   const extracted = await extraction.fromText(doc.textExtract);
   if (extracted.labs.length || extracted.bloodGroup) {
     const prov = {

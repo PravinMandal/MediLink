@@ -10,7 +10,7 @@ import { consents, patients } from "@/server/db/schema";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { consent, SCOPE_LABELS, type ConsentScope } from "@/server/modules/consent/service";
 import { PatientLookupForm, HandoffRedeemForm } from "@/components/patient-search";
-import { initials, daysUntil } from "@/lib/utils";
+import { initials } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Find a patient",

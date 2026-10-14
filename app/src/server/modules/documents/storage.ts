@@ -30,6 +30,19 @@ export function assertValidKey(key: string): string {
   return key;
 }
 
+/**
+ * Encode a storage key for Supabase Storage REST paths. Each segment is
+ * encoded SEPARATELY — the `/` separator must survive: encoding the whole
+ * key turns it into `%2F`, which the object endpoints decode back for
+ * storage but the sign endpoint binds into the token verbatim. The signed
+ * URL then verifies against the decoded path and fails with
+ * `InvalidSignature` on fetch. Segment-wise encoding keeps both sides
+ * consistent (verified against a live bucket).
+ */
+export function encodeKey(key: string): string {
+  return assertValidKey(key).split("/").map(encodeURIComponent).join("/");
+}
+
 class LocalStorage implements StorageAdapter {
   readonly name = "local";
   private baseDir = ".uploads";
@@ -83,11 +96,16 @@ class SupabaseStorage implements StorageAdapter {
   }
 
   async put(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    // text/* without a charset is sniffed downstream (browsers guessed
+    // Latin-1 on our UTF-8 reports → mojibake). The DB mimeType column stays
+    // canonical ("text/plain"); only the stored object header is labeled.
+    const storedType =
+      contentType === "text/plain" ? "text/plain; charset=utf-8" : contentType;
     const res = await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeKey(key)}`,
       {
         method: "POST",
-        headers: { ...this.headers(), "Content-Type": contentType },
+        headers: { ...this.headers(), "Content-Type": storedType },
         body: bytes as unknown as BodyInit,
       },
     );
@@ -98,7 +116,7 @@ class SupabaseStorage implements StorageAdapter {
 
   async get(key: string): Promise<Uint8Array> {
     const res = await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeKey(key)}`,
       { headers: this.headers() },
     );
     if (!res.ok) throw new Error(`Supabase storage get failed: ${res.status}`);
@@ -107,7 +125,7 @@ class SupabaseStorage implements StorageAdapter {
 
   async delete(key: string): Promise<void> {
     await fetch(
-      `${this.url}/storage/v1/object/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
+      `${this.url}/storage/v1/object/${this.bucket}/${encodeKey(key)}`,
       { method: "DELETE", headers: this.headers() },
     );
   }
@@ -115,7 +133,7 @@ class SupabaseStorage implements StorageAdapter {
   /** Signed URL via the Storage Auth API (valid 5 minutes by default). */
   async signedUrl(key: string, expiresInSeconds = 300): Promise<string | null> {
     const res = await fetch(
-      `${this.url}/storage/v1/object/sign/${this.bucket}/${encodeURIComponent(assertValidKey(key))}`,
+      `${this.url}/storage/v1/object/sign/${this.bucket}/${encodeKey(key)}`,
       {
         method: "POST",
         headers: this.headers(true),

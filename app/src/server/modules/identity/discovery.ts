@@ -6,7 +6,7 @@
  * - Patient-present handoff: opaque, single-use, short-lived tokens.
  * - Rate limiting with abuse audit on lookup attempts.
  */
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
@@ -23,6 +23,18 @@ import {
 
 export const LOOKUP_RATE_LIMIT = LIMITS.lookup;
 export { rateLimit };
+
+/**
+ * Peppered HMAC for handoff codes (not plain SHA-256): a database read alone
+ * must not enable offline brute force of the short human-typable codes.
+ * Online guessing is already infeasible (48-bit code, 10-minute expiry,
+ * single-use, per-user rate limit) — the pepper closes the offline path too.
+ * Same hex width, so no migration; codes live ≤10 minutes.
+ */
+function hashHandoffCode(code: string): string {
+  const pepper = process.env.BETTER_AUTH_SECRET ?? "medilink-dev-handoff-pepper";
+  return createHmac("sha256", pepper).update(code).digest("hex");
+}
 
 export type LookupOutcome =
   | { kind: "invalid"; message: string }
@@ -161,7 +173,7 @@ export const discovery = {
 
     const secret = crypto.randomUUID().replace(/-/g, "");
     const code = `${secret.slice(0, 4)}-${secret.slice(4, 8)}-${secret.slice(8, 12)}`;
-    const tokenHash = createHash("sha256").update(code).digest("hex");
+    const tokenHash = hashHandoffCode(code);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.insert(patientHandoffTokens).values({
       tokenHash,
@@ -185,7 +197,7 @@ export const discovery = {
     if (!rateLimit(`handoff:${input.clinicianUserId}`, LIMITS.handoff)) {
       return { ok: false as const, message: "Too many attempts. Wait a minute." };
     }
-    const tokenHash = createHash("sha256").update(input.code.trim()).digest("hex");
+    const tokenHash = hashHandoffCode(input.code.trim());
     const [token] = await db
       .select()
       .from(patientHandoffTokens)

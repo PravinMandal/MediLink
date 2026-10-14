@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MediLink — Design and Model</title>
+<style>
+  @page { size: A4; margin: 22mm 18mm 24mm 18mm;
+    @bottom-center { content: counter(page) " / " counter(pages);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 9px; color: #6b7280; } }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, "Times New Roman", serif; font-size: 11.5pt;
+    line-height: 1.55; color: #111827; margin: 0; }
+  .cover { page-break-after: always; padding-top: 120px; text-align: center; }
+  .cover .kicker { font-family: Helvetica, Arial, sans-serif; font-size: 11pt;
+    letter-spacing: 3px; text-transform: uppercase; color: #1d4ed8; }
+  .cover h1 { font-size: 34pt; margin: 18px 0 8px; }
+  .cover .sub { font-size: 14pt; color: #374151; font-style: italic; }
+  .cover .meta { margin-top: 60px; font-family: Helvetica, Arial, sans-serif;
+    font-size: 10pt; color: #6b7280; line-height: 1.8; }
+  h2 { font-family: Helvetica, Arial, sans-serif; font-size: 17pt; color: #1e3a8a;
+    border-bottom: 2.5px solid #1e3a8a; padding-bottom: 4px; margin-top: 34px;
+    page-break-after: avoid; }
+  h3 { font-family: Helvetica, Arial, sans-serif; font-size: 12.5pt; color: #111827;
+    margin-top: 20px; page-break-after: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 16px;
+    font-family: Helvetica, Arial, sans-serif; font-size: 9pt; line-height: 1.45;
+    page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  th { background: #1e3a8a; color: #fff; text-align: left; padding: 7px 8px; }
+  td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f3f6fb; }
+  pre { background: #f3f6fb; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 12px 14px; font-size: 8.2pt; line-height: 1.45; overflow-x: auto;
+    page-break-inside: avoid; font-family: "Courier New", monospace; }
+  code { font-family: "Courier New", monospace; font-size: 9.5pt;
+    background: #eef2f7; padding: 1px 5px; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .note { border-left: 4px solid #1d4ed8; background: #eff4ff; padding: 10px 14px;
+    font-size: 10.5pt; margin: 14px 0; page-break-inside: avoid; }
+  ol.flow { counter-reset: flow; list-style: none; padding-left: 0; }
+  ol.flow > li { counter-increment: flow; margin: 10px 0; padding-left: 34px;
+    position: relative; page-break-inside: avoid; }
+  ol.flow > li::before { content: counter(flow); position: absolute; left: 0; top: 1px;
+    width: 24px; height: 24px; border-radius: 50%; background: #1e3a8a; color: #fff;
+    font-family: Helvetica, Arial, sans-serif; font-size: 10pt; font-weight: bold;
+    text-align: center; line-height: 24px; }
+  .section { page-break-before: always; }
+  ul { padding-left: 22px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">MediLink · Project Report</div>
+  <h1>Design and Model</h1>
+  <div class="sub">System architecture, data model, algorithms, technology stack,
+    UI design, database design, and system flows of a consent-gated health record.</div>
+  <div class="meta">
+    Source of truth: the implementation in <code>app/</code> (Next.js + PostgreSQL + Drizzle)<br>
+    Verified against code, 92 passing tests, and live end-to-end runs<br>
+    9 September 2026 · Hosting cost for the pilot: ₹0
+  </div>
+</div>
+
+<div class="section">
+<h2>1. System Architecture</h2>
+<h3>1.1 Overview</h3>
+<p>MediLink is a <strong>consent-gated longitudinal health record</strong>. Patients own one
+chart; verified doctors and labs contribute clinical data; <strong>no professional read is
+possible without an active, unexpired, scoped consent grant</strong> — except a time-boxed,
+audited emergency window. Every sensitive action is appended to a <strong>hash-chained
+audit log</strong>. It is a 3-tier web system, deployed serverless:</p>
+<pre><code>CLIENT — React Server Components (default) + small client islands
+   (forms, drawers, search, theme toggle, notifications bell)
+            │ HTTPS
+APP SERVER — Next.js 16 App Router (Vercel, Node runtime)
+   Routes (/portal/*, /api/*, /e/*) · Server Actions (mutations)
+   Guards: requireUser → requireRole → requireVerifiedPractitioner
+           → access.assert
+   Services: consent · records · patients · documents · emergency · audit
+   Worker (/api/worker + outbox jobs): extraction, notifications, re-scans
+            │ SQL (Drizzle ORM)            │ signed URLs / bytes
+DATA — PostgreSQL                    OBJECT STORAGE (Supabase)
+   Supabase (prod) / PGlite             original PDFs/images/text,
+   embedded (dev), same schema          immutable, sha-256 hashed</code></pre>
+
+<h3>1.2 Layers and responsibilities</h3>
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Does</th><th>Does NOT do</th></tr>
+<tr><td>Presentation</td><td>React Server Components; client islands only for interactivity</td><td>Renders scoped data; forms via server actions; loading / empty / error / denied states per page</td><td>Never enforces security (route guards are UX only)</td></tr>
+<tr><td>API boundary</td><td>Server Actions + app/api routes</td><td>All mutations; every one re-authenticates and re-authorizes</td><td>Never trusts client-supplied IDs without ownership checks</td></tr>
+<tr><td>Policy engine</td><td>access/policy.ts + guard.ts</td><td>Fail-closed scope evaluation; scopeForResource() throws on unknown types; every decision logged</td><td>Never defaults to allow</td></tr>
+<tr><td>Domain services</td><td>modules/{consent, records, patients, documents, emergency, audit}</td><td>Business rules, transactions, idempotency</td><td>Never bypasses the guard</td></tr>
+<tr><td>Data</td><td>Drizzle ORM → Postgres</td><td>Constraints, FKs, unique indexes, hash chain</td><td>Never stores originals (metadata + hashes only)</td></tr>
+<tr><td>Files</td><td>Supabase Storage, per-segment key encoding</td><td>Immutable originals, signed-URL reads</td><td>Never public buckets</td></tr>
+<tr><td>Async</td><td>/api/worker + outbox table</td><td>Extraction, notifications, re-scans; retries + dead-letter</td><td>Never loses a job silently</td></tr>
+</table>
+
+<h3>1.3 Key architectural decisions</h3>
+<ol class="flow">
+<li><strong>Server-first security.</strong> Authorization lives in access.assert() on the server. Hidden buttons and client route guards are convenience only — verified by exercising doctor URLs as a patient (bounced server-side).</li>
+<li><strong>Consent is the addressing scheme.</strong> Reads are keyed (practitioner, patient, scopes, time-window), not just (user, row).</li>
+<li><strong>Immutable clinical history.</strong> Corrections supersede (new version), never overwrite; disputes flag, never edit.</li>
+<li><strong>Deterministic before probabilistic.</strong> Conflict detection and the default summary are pure functions; the LLM is an optional renderer that must cite or drop claims.</li>
+<li><strong>Cheap by construction.</strong> One Next.js app + managed Postgres + object storage, all on free tiers. No always-on servers, no per-seat services.</li>
+<li><strong>Dev/prod parity.</strong> PGlite runs the same Drizzle schema and migrations locally, so data-layer behavior (including the audit chain) is identical in both environments.</li>
+</ol>
+</div>
+
+<div class="section">
+<h2>2. Data Model</h2>
+<h3>2.1 Entity map</h3>
+<pre><code>user ──1:1── patients ──1:N── consents ──N:1── practitioners ──N:1── user
+  │              │                 │                │
+  │              │                 │                └── organization membership
+  │              ├── conditions / allergies / medication_statements
+  │              ├── observations / procedures / immunizations
+  │              ├── encounters / diagnostic_reports / documents
+  │              ├── clinical_resource_versions (immutable seals)
+  │              ├── data_conflicts (system-detected)
+  │              └── data_disputes (patient-raised)
+  │
+  ├── access_requests (doctor asks → patient narrows → grant/decline)
+  ├── emergency_windows (break-glass, 60 min, step-up authed)
+  ├── notifications (inbox per user)
+  └── audit_events (hash-chained, append-only)</code></pre>
+
+<h3>2.2 Core entities</h3>
+<table>
+<tr><th>Entity</th><th>Stores</th><th>Why it matters</th></tr>
+<tr><td>user</td><td>Better-Auth identity + role (patient / doctor / org_staff / org_admin / platform_admin)</td><td>Role changes are privileged and audited</td></tr>
+<tr><td>patients</td><td>Demographics, unique patientCode (ML-XXXXX-XXXXX-C), optional 14-digit ABHA, blood-group self-report; userId when claimed, createdById before that</td><td>The chart root; code possession alone grants nothing</td></tr>
+<tr><td>practitioners</td><td>One row per clinician (UNIQUE userId): registration no., council, specialty, verificationStatus, verifiedAt/By</td><td>Resubmission updates in place so grants (keyed by practitioner id) survive</td></tr>
+<tr><td>organizations</td><td>Facilities (e.g. Sunrise Diagnostics) with verification state</td><td>Staff act under the facility's verified status</td></tr>
+<tr><td>consents</td><td>patient, grantee, purpose, scopes[], expiresAt, revocation flag, content hash + receipt code</td><td>Revocation is immediate — every read re-evaluates</td></tr>
+<tr><td>access_requests</td><td>Proposed scopes → patient-narrowed grant, or decline</td><td>No pre-selected scopes; patient can only narrow, never widen</td></tr>
+<tr><td>emergency_windows</td><td>One live window per practitioner+patient, 60 min, step-up authed</td><td>Critical scopes only; notified; admin-reviewed</td></tr>
+<tr><td>documents</td><td>Metadata of originals: title, type, sha-256, storage key, attestation</td><td>Bytes live in object storage, never in the DB</td></tr>
+<tr><td>Clinical tables ×9</td><td>patientId, clinical fields, trust (verified / extracted / self_reported), source/author refs, supersession pointers</td><td>Never deleted on correction — only superseded</td></tr>
+<tr><td>clinical_resource_versions</td><td>Immutable seal per write: canonical payload + sha-256, lifecycle (active / corrected / superseded / disputed / entered_in_error)</td><td>Append-only history with correction links</td></tr>
+<tr><td>data_conflicts</td><td>Engine findings with content _key, open/resolved, resolution notes</td><td>Evidence preserved on resolution</td></tr>
+<tr><td>data_disputes</td><td>Patient flags with reason; clinician confirm/dismiss + notes</td><td>Version flag lifts when nothing open references the resource</td></tr>
+<tr><td>search_chunks</td><td>Per-row display label + full-text content (GIN index)</td><td>Powers search and dispute labels</td></tr>
+<tr><td>notifications</td><td>Per-user inbox (grants, requests, emergency alerts)</td><td>Durable via outbox</td></tr>
+<tr><td>audit_events</td><td>actor, action, resource, prevHash → hash chained (GENESIS first)</td><td>Periodic checkpoints let anyone re-verify the chain</td></tr>
+</table>
+
+<h3>2.3 Relationship rules that matter</h3>
+<ul>
+<li>Grants reference <code>practitioner.id</code> (stable across resubmission), never the user id.</li>
+<li>Dispute raising verifies the flagged row belongs to the raiser's chart (single UNION ALL over the 9 clinical tables) — cross-patient flagging is rejected.</li>
+<li><code>conflicts.resolved_by</code> has a user FK: human resolutions reference a user; system auto-resolutions use NULL (no fake "system" user).</li>
+<li>Deletions cascade only downward (search chunks die with their row). Clinical facts are never hard-deleted.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>3. Algorithm Selection</h2>
+<p>Every algorithm was chosen for <strong>auditability over cleverness</strong> — a health
+record must be explainable in a dispute.</p>
+<h3>3.1 Contradiction detection (deterministic rules)</h3>
+<table>
+<tr><th>Detector</th><th>Rule</th><th>Severity</th></tr>
+<tr><td>Blood group</td><td>Verified lab value ≠ patient self-report; verified value displayed</td><td>critical</td></tr>
+<tr><td>Allergy</td><td>Same substance, distinct criticality‖reaction across live rows</td><td>warning</td></tr>
+<tr><td>Duplicate document</td><td>Identical contentHash on 2+ documents</td><td>info</td></tr>
+<tr><td>Lab value</td><td>Same analyte + same date, distinct numeric values</td><td>warning</td></tr>
+</table>
+<p>Each row carries a content <code>_key</code> (sha-256 of kind + details) so distinct
+analytes/allergies coexist and re-scans dedupe. <strong>Reconciliation:</strong> after every
+scan, open conflicts whose key was not reproduced are auto-closed with a preserved note —
+corrections and supersessions clear stale banners automatically. <strong>Why rules, not
+ML:</strong> reproducible, unit-testable, zero hallucinations, millisecond runtime.</p>
+<h3>3.2 Summarization (deterministic SBAR + cited LLM option)</h3>
+<p>Default mode is a <strong>pure function</strong>: scoped facts → SBAR structure (key events,
+history, recent changes, open data issues), every sentence carrying source citations.
+LLM mode is a renderer under the same contract: <strong>a claim without a source is
+dropped</strong>, recorded-fact language never implies AI judgment, and the mode badge
+(deterministic vs LLM · model) is always shown. A stored summary from broader consent is
+never shown to a narrower grantee.</p>
+<h3>3.3 Identity and access algorithms</h3>
+<ul>
+<li><strong>Patient code</strong> <code>ML-XXXXX-XXXXX-C</code>: random segments plus a check
+character that catches typos; case/dash-insensitive normalization. Possession grants nothing.</li>
+<li><strong>Policy evaluation:</strong> <code>scopeForResource()</code> maps every record kind
+to its consent scope and <strong>throws on unknown kinds</strong> (fail-closed); emergency
+basis exposes a fixed critical set; revocation re-evaluated per read; every decision logged.</li>
+<li><strong>Rate limiting</strong> on discovery/lookup endpoints against enumeration.</li>
+<li><strong>Verification:</strong> mock provider auto-approves plausible registrations (demo);
+implausible ones queue for human review; every submission/decision audit-logged.</li>
+</ul>
+<h3>3.4 Retrieval</h3>
+<p>Record search runs over <code>search_chunks</code> (label + full text, GIN-indexed), always
+filtered by patient and by the reader's granted scopes; the same index supplies human labels
+for the concerns queue.</p>
+</div>
+
+<div class="section">
+<h2>4. Technology Stack</h2>
+<table>
+<tr><th>Layer</th><th>Choice</th><th>Why (and cost)</th></tr>
+<tr><td>Framework</td><td>Next.js 16 (App Router, RSC, Server Actions)</td><td>One deployable for SSR, mutations, APIs; server components keep PHI out of client bundles. Free.</td></tr>
+<tr><td>Language</td><td>TypeScript (strict, 0 errors)</td><td>Catches scope/data mismatches at compile time, under 92 tests.</td></tr>
+<tr><td>Styling</td><td>Tailwind CSS v4 (@theme inline tokens)</td><td>Themeable design tokens; no runtime CSS-in-JS cost.</td></tr>
+<tr><td>ORM</td><td>Drizzle ORM</td><td>Readable SQL, file migrations, identical schema dev↔prod.</td></tr>
+<tr><td>Database</td><td>PostgreSQL — Supabase (prod) / PGlite embedded (dev)</td><td>Managed Postgres free tier; zero-setup identical engine locally.</td></tr>
+<tr><td>Object storage</td><td>Supabase Storage (signed URLs)</td><td>Private buckets; per-segment key encoding. Free tier covers a pilot.</td></tr>
+<tr><td>Auth</td><td>Better-Auth (email/password, sessions, reset, verification)</td><td>Self-hosted sessions in our own DB; OAuth boundary ready. ₹0.</td></tr>
+<tr><td>Hosting</td><td>Vercel Hobby</td><td>Serverless Next.js + worker route; 60s maxDuration for uploads. Free.</td></tr>
+<tr><td>Tests</td><td>Vitest + Playwright + axe-core</td><td>92 unit + ~60 browser checks + contrast/dark audits. Free.</td></tr>
+<tr><td>Icons</td><td>Lucide</td><td>One consistent icon language.</td></tr>
+<tr><td>Removed</td><td>three.js / react-three-fiber</td><td>Rendered poorly; cost bundle + warnings; replaced with CSS mocks.</td></tr>
+</table>
+<div class="note"><strong>Total hosting cost for the pilot: ₹0</strong> — Vercel Hobby +
+Supabase Free, with no per-seat or per-API-key service in the critical path.</div>
+</div>
+
+<div class="section">
+<h2>5. User Interface (UI) Design</h2>
+<h3>5.1 Design language</h3>
+<ul>
+<li><strong>Typography:</strong> Fraunces (display serif — editorial trust), Instrument Sans (UI), Plex Mono (codes, hashes, values).</li>
+<li><strong>Color:</strong> pine (primary trust signal), alert/amber/info statuses — every pair contrast-tested per mode (WCAG AA, axe-enforced). Glass effects only where they aid hierarchy; body-text cards are solid.</li>
+<li><strong>Shape &amp; motion:</strong> 12–24px radii, 1px line borders, soft shadows; one Reveal scroll system (opacity/translate only) with full prefers-reduced-motion support and a view-transition theme wipe.</li>
+</ul>
+<h3>5.2 Themes</h3>
+<p>Daylight (default), Obsidian (dark), system-follow, plus an independent Reduce
+Transparency toggle — persisted, with a pre-hydration script so there is no flash. Dark mode
+is a separately designed palette, not an inversion (verified across 12 pages).</p>
+<h3>5.3 Information architecture per role</h3>
+<table>
+<tr><th>Surface</th><th>Contents</th></tr>
+<tr><td>Marketing (/)</td><td>Thesis hero with live-pattern consent card, trust strip, evidence pillars, chain section (seal → gate → citation), 4-step journey, role cards, "what we do NOT do" honesty panel, FAQ, CTA. Zero canvas, mobile-first.</td></tr>
+<tr><td>Patient portal</td><td>Dashboard glance band (allergies / problems / meds / activity), health record with provenance drawers ("flag a concern"), documents, timeline, access centre (grant / narrow / decline / revoke), emergency QR card + print, access history, profile + ABHA + themes.</td></tr>
+<tr><td>Doctor workspace</td><td>Identifier lookup (never a name/phone directory); AccessBanner (purpose, scopes, exact expiry, renewal); patient context bar (wrong-patient escape); 10-second glance band; cited evidence summary; concerns queue (confirm/dismiss); labs &amp; trends; documents; contribute; inbox; emergency access.</td></tr>
+<tr><td>Lab console</td><td>Consented-patient upload (original preserved byte-for-byte, values extracted to trends), attestation review queue.</td></tr>
+<tr><td>Admin</td><td>Verification queues, emergency oversight (reviewed/unreviewed + reviewer notes), audit stream, roles.</td></tr>
+</table>
+<h3>5.4 AI UX</h3>
+<p>Summaries render as an <strong>evidence rail</strong>: recorded-fact groups as stations on a
+line, each claim with inline citation chips resolving to sealed rows — visually distinct from
+authoritative records, with mode badge, generation timestamp, and a "verify against sources"
+affordance. Long responses paginate by group. Errors, empty states (honest "no record found
+as of this date"), and permission-denied states are all designed, not defaults.</p>
+<h3>5.5 Every-state discipline</h3>
+<p>Each workflow ships normal / loading / empty / error / partial-data / denied /
+expired-session / malformed-input / slow-network / mobile / both-themes — enforced by the
+34-check Playwright suite, not by convention.</p>
+</div>
+
+<div class="section">
+<h2>6. Database Design</h2>
+<h3>6.1 Schema surfaces (Drizzle, src/server/db/schema.ts)</h3>
+<table>
+<tr><th>Table</th><th>Key columns / constraints</th><th>Indexes</th></tr>
+<tr><td>user</td><td>Better-Auth fields + role</td><td>id, email unique</td></tr>
+<tr><td>patients</td><td>patientCode unique, validated abha, userId?, createdById</td><td>patientCode unique, userId</td></tr>
+<tr><td>practitioners</td><td>userId UNIQUE, registration no., council, verificationStatus, verifiedAt/By</td><td>practitioner_user_unique, status</td></tr>
+<tr><td>organizations + staff</td><td>Verification state</td><td>status</td></tr>
+<tr><td>consents</td><td>patient, grantee, purpose, scopes[], expiresAt, revoked, hash, receipt</td><td>patient+status, grantee, expiry</td></tr>
+<tr><td>access_requests</td><td>Suggested vs granted scopes, state, decline reason</td><td>patient+state</td></tr>
+<tr><td>emergency_windows</td><td>practitioner+patient, 60-min liveness, reason, step-up proof, review</td><td>live-window lookup</td></tr>
+<tr><td>documents</td><td>patient, hash, storage key, attestation</td><td>patient, hash</td></tr>
+<tr><td>clinical tables ×9</td><td>patientId FK, trust, source/author refs, supersession pointers</td><td>patient per table</td></tr>
+<tr><td>clinical_resource_versions</td><td>resourceId, canonical payload, sha-256, lifecycle</td><td>resource lookup</td></tr>
+<tr><td>data_conflicts</td><td>patient, kind, _key in details, status</td><td>(patient, status)</td></tr>
+<tr><td>data_disputes</td><td>patient, resource, reason, status, resolution + notes</td><td>patient+status</td></tr>
+<tr><td>search_chunks</td><td>patient, recordId, label, content</td><td>GIN full-text, patient</td></tr>
+<tr><td>notifications</td><td>user, kind, payload, read flag</td><td>user+read</td></tr>
+<tr><td>audit_events</td><td>actor, action, resource, prevHash → hash</td><td>actor, patient, action</td></tr>
+<tr><td>practitioner_verifications</td><td>Per-submission history (provider, outcome)</td><td>practitioner</td></tr>
+</table>
+<h3>6.2 Integrity mechanisms</h3>
+<ul>
+<li><strong>Fail-closed reads:</strong> every clinical query is built with the evaluated scope set — narrower consent means fewer tables touched, never client-side row filtering.</li>
+<li><strong>Idempotency:</strong> extraction retry deletes by sourceDocumentId before re-insert; break-glass arming is idempotent per live window; outbox dedupes by event key.</li>
+<li><strong>Concurrency:</strong> audit hash computed in-transaction (single pgcrypto statement in prod; serialized fallback in tests); corrections link replacesVersionId, so concurrent edits fork visibly instead of clobbering.</li>
+<li><strong>Migrations:</strong> numbered Drizzle SQL + journal, applied identically to Supabase and PGlite. Seed produces the golden chart, conflicts, SBAR summary, and demo accounts ending with chain intact ✓.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>7. System Flow</h2>
+<h3>7.1 Consent lifecycle (the core loop)</h3>
+<pre><code>Doctor (verified, no access)
+  │ identifier lookup (ID only — nothing leaks pre-consent)
+  ▼
+Access request (proposes scopes + purpose + duration)
+  │ patient inbox card: who / why / which categories / how long
+  ├─ Decline ──► closed + notified
+  └─ Grant (patient NARROWS scopes) ──► consent {hash, receipt, expiry}
+        │ doctor workspace unlocks ONLY granted scopes
+        │ AccessBanner shows purpose · scopes · exact expiry
+        ├─ Renew ──► fresh request before expiry
+        └─ Revoke ──► immediate; next read denied + audited</code></pre>
+<h3>7.2 Lab contribution → citation</h3>
+<pre><code>Lab uploads original (consented patient only)
+  → magic-byte validation, ≤ 4 MB → bytes stored immutable + sha-256
+  → worker extracts observations → structured rows (trust = extracted)
+  → attestation (doctor/lab reviews, seals a version)
+  → contradiction re-scan → indexed into search_chunks
+  → summary cites it (claim ↔ sealed row, page-level)</code></pre>
+<h3>7.3 Emergency (break-glass)</h3>
+<pre><code>Unresponsive patient → verified doctor opens Emergency access
+  → enters Patient ID + clinical reason + own password (step-up)
+  → ONE 60-minute window (idempotent) → critical scopes only
+  → every read audited → patient notified → admin reviews afterwards</code></pre>
+<h3>7.4 Dispute loop</h3>
+<pre><code>Patient flags a row in a provenance drawer (chart-ownership checked)
+  → version marked disputed → doctor "concerns" card appears
+  → Confirm (issue recorded; correction follows separately)
+     or Dismiss (note required for accountability)
+  → last-open resolution lifts the version flag;
+     full trace kept in disputes table + audit</code></pre>
+<h3>7.5 Discovery &amp; scan paths</h3>
+<pre><code>Handoff token (single-use, expiring) → redeem → request → grant
+QR scan (/e/&lt;token&gt;) → login (context preserved via ?next=) → scoped view
+Unknown token → invalid state, zero patient data</code></pre>
+<p><em>Where this document and the code disagree, the code wins.</em></p>
+</div>
+
+</body>
+</html>

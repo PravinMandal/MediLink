@@ -71,9 +71,17 @@ export async function GET(
     doc.mimeType === "text/plain";
   if (!isAllowedMime) return new NextResponse("Unsupported media type", { status: 415 });
 
-  // Inline only for types that render safely with nosniff (PDF preview for
-  // doctors); everything else downloads as an attachment.
-  const inlineOk = doc.mimeType === "application/pdf" || doc.mimeType.startsWith("image/");
+  // Inline only for types that render safely with nosniff. SVG is
+  // deliberately attachment-only: image/svg+xml is active content and must
+  // never execute inline, even if a row was hand-edited past ingest.
+  const INLINE_MIMES = new Set([
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ]);
+  const inlineOk = INLINE_MIMES.has(doc.mimeType);
 
   await audit.record({
     actorId: user.id,
@@ -110,10 +118,16 @@ export async function GET(
 
   const bytes = await readDocumentBytes(doc.storageKey);
 
-  return new NextResponse(Buffer.from(bytes), {
+  // text/plain without an explicit charset is sniffed by browsers (Chrome
+  // guessed Latin-1 on our UTF-8 reports → mojibake em-dashes). Declare it.
+  const contentType =
+    doc.mimeType === "text/plain" ? "text/plain; charset=utf-8" : doc.mimeType;
+
+  return new NextResponse(new Uint8Array(bytes), {
     headers: {
-      "Content-Type": doc.mimeType,
+      "Content-Type": contentType,
       "Content-Disposition": `${inlineOk ? "inline" : "attachment"}; filename="${doc.title.replace(/[^\w .-]/g, "_")}"`,
+      "Content-Length": String(bytes.length),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

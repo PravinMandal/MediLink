@@ -58,6 +58,20 @@ export async function lookupPatientAction(identifier: string): Promise<LookupRes
           redirect: `/portal/doctor/patients/${result.patientId}`,
         };
       }
+      // A live break-glass window is also an active authorization: route
+      // straight to the record instead of stranding the clinician on
+      // "request access" right after they armed emergency access.
+      if (practitioner) {
+        const { emergency } = await import("@/server/modules/emergency/service");
+        const live = await emergency.liveFor(practitioner.id, result.patientId);
+        if (live) {
+          return {
+            status: "authorized",
+            patientId: result.patientId,
+            redirect: `/portal/doctor/patients/${result.patientId}`,
+          };
+        }
+      }
       return {
         status: "request_access",
         patientId: result.patientId,

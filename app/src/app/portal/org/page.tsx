@@ -45,6 +45,23 @@ export default async function OrgConsole() {
     );
   }
 
+  // P1: staff directory, consented-patient names, and upload titles below are
+  // privileged — any authenticated account carrying an organizationId (a
+  // doctor, or a patient attached via join) must not see them. The queries
+  // run only for facility roles.
+  if (user.role !== "lab_staff" && user.role !== "org_admin") {
+    return (
+      <>
+        <PageHeader eyebrow="Facility console" title="Restricted area" />
+        <Card className="mt-5">
+          <div className="px-4 py-4 text-sm text-ink-soft sm:px-5">
+            The facility console is restricted to lab staff and facility admins.
+          </div>
+        </Card>
+      </>
+    );
+  }
+
   const [org] = await db
     .select()
     .from(organizations)

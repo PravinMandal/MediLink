@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { desc, eq } from "drizzle-orm";
 import { BellRing, CheckCheck } from "lucide-react";
 import { PageHeader, Card, CardHeader, EmptyState, Badge } from "@/components/ui";
-import { requireUser } from "@/server/session";
+import { requireRole } from "@/server/session";
 import { db } from "@/server/db";
 import { notifications, patients, consents, practitioners } from "@/server/db/schema";
 import { formatTime, formatDate } from "@/lib/utils";
@@ -29,7 +29,7 @@ const TYPE_META: Record<string, { label: string; tone: "pine" | "amber" | "alert
  * with the bell (same notifications table).
  */
 export default async function DoctorInboxPage() {
-  const user = await requireUser();
+  const user = await requireRole("doctor");
 
   // Notifications addressed to this doctor…
   const direct = await db

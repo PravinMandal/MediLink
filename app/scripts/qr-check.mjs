@@ -1,12 +1,14 @@
 // Final QR validation: rasterize our SVG at 4x and decode with jsQR in
 // Chromium (isolated from jsQR's node module resolution).
+// NOTE: run with `npx tsx scripts/qr-check.mjs` (node cannot import .tsx).
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
 import { EmergencyCard } from "../src/components/emergency-card.tsx";
 import { chromium } from "playwright";
 import jsQR from "jsqr";
 
-const url = "http://localhost:3000/portal/doctor/patients/0b6f2a3e-1111-2222-3333-444455556666";
+// Opaque emergency URL shape (D29: never a raw patient-UUID URL).
+const url = "http://localhost:3000/e/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const html = renderToStaticMarkup(
   React.createElement(EmergencyCard, {
     data: {

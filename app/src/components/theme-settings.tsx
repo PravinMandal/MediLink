@@ -40,13 +40,28 @@ export function ThemeSettings() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  function applyTheme(choice: ThemeChoice) {
+  function applyTheme(choice: ThemeChoice, e?: React.MouseEvent) {
     setTheme(choice);
     localStorage.setItem(STORAGE_KEY, choice);
-    const dark =
-      choice === "dark" ||
-      (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    const swap = () => {
+      const dark =
+        choice === "dark" ||
+        (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    };
+    const root = document.documentElement;
+    if (e) {
+      root.style.setProperty("--theme-x", `${e.clientX}px`);
+      root.style.setProperty("--theme-y", `${e.clientY}px`);
+    }
+    const vt = (
+      document as Document & { startViewTransition?: (fn: () => void) => unknown }
+    ).startViewTransition;
+    if (typeof vt === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      vt.call(document, swap);
+    } else {
+      swap();
+    }
   }
 
   function applyTransparency(choice: TransparencyChoice) {
@@ -71,7 +86,7 @@ export function ThemeSettings() {
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => applyTheme(opt.value)}
+                onClick={(e) => applyTheme(opt.value, e)}
                 aria-pressed={active}
                 className={cn(
                   "glass-hover flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left",

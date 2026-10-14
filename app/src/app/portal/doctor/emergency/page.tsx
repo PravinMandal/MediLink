@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { PageHeader, Card, CardHeader, Alert } from "@/components/ui";
 import { BreakGlassForm } from "@/components/doctor-forms";
+import { requireRole } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Emergency access",
@@ -15,6 +16,9 @@ export const metadata: Metadata = {
  * rate limit, and audit; this page frames it with the policy facts.
  */
 export default async function EmergencyAccessPage() {
+  // Clinician tooling: patients/staff/admins get their own home, never the
+  // break-glass form (the action separately requires a verified practitioner).
+  await requireRole("doctor");
 
   return (
     <>

@@ -35,6 +35,12 @@ export async function updatePatientProfileAction(
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    if (err instanceof Error && err.message === "INVALID_ABHA")
+      return { error: "ABHA must be exactly 14 digits (or left blank)." };
+    if (err instanceof Error && err.message === "INVALID_BLOOD_GROUP")
+      return { error: "Choose a valid blood group from the list." };
+    if (err instanceof Error && err.message === "FIELD_TOO_LONG")
+      return { error: "One of the fields is too long. Keep each under 120 characters." };
     return { error: "Could not update the profile." };
   }
 
