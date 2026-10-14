@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { Monitor, Moon, Sun, Droplets } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type ThemeChoice = "light" | "dark" | "system";
-type TransparencyChoice = "default" | "reduced";
-
-const STORAGE_KEY = "medilink-theme";
-const TRANSPARENCY_KEY = "medilink-transparency";
+import {
+  applyThemeChoice,
+  applyTransparencyChoice,
+  cinematicApply,
+  storedThemeChoice,
+  storedTransparencyChoice,
+  type ThemeChoice,
+  type TransparencyChoice,
+} from "@/lib/theme";
 
 const OPTIONS: Array<{ value: ThemeChoice; label: string; icon: typeof Sun; hint: string }> = [
   { value: "light", label: "Daylight", icon: Sun, hint: "Bright clinic surfaces" },
@@ -17,13 +20,10 @@ const OPTIONS: Array<{ value: ThemeChoice; label: string; icon: typeof Sun; hint
 ];
 
 /**
- * Themes section (profile): one-click whole-site appearance. Writes the same
- * localStorage keys + data-theme/data-transparency attributes the
- * pre-hydration script in layout.tsx reads, so there is no flash on reload.
+ * Themes section (profile): one-click whole-site appearance. State syncs
+ * through src/lib/theme (same keys + attributes the pre-hydration script in
+ * layout.tsx reads, so there is no flash on reload).
  */
-/* eslint-disable react-hooks/immutability -- DOM writes are the point of this
-   client component: it syncs React state to documentElement attributes and
-   localStorage, the same pattern as theme-toggle.tsx. */
 export function ThemeSettings() {
   const [theme, setTheme] = useState<ThemeChoice>("system");
   const [transparency, setTransparency] = useState<TransparencyChoice>("default");
@@ -32,46 +32,20 @@ export function ThemeSettings() {
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       setMounted(true);
-      setTheme((localStorage.getItem(STORAGE_KEY) as ThemeChoice | null) ?? "system");
-      setTransparency(
-        (localStorage.getItem(TRANSPARENCY_KEY) as TransparencyChoice | null) ?? "default",
-      );
+      setTheme(storedThemeChoice());
+      setTransparency(storedTransparencyChoice());
     });
     return () => cancelAnimationFrame(raf);
   }, []);
 
   function applyTheme(choice: ThemeChoice, e?: React.MouseEvent) {
     setTheme(choice);
-    localStorage.setItem(STORAGE_KEY, choice);
-    const swap = () => {
-      const dark =
-        choice === "dark" ||
-        (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-    };
-    const root = document.documentElement;
-    if (e) {
-      root.style.setProperty("--theme-x", `${e.clientX}px`);
-      root.style.setProperty("--theme-y", `${e.clientY}px`);
-    }
-    const vt = (
-      document as Document & { startViewTransition?: (fn: () => void) => unknown }
-    ).startViewTransition;
-    if (typeof vt === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      vt.call(document, swap);
-    } else {
-      swap();
-    }
+    cinematicApply(() => applyThemeChoice(choice), e);
   }
 
   function applyTransparency(choice: TransparencyChoice) {
     setTransparency(choice);
-    localStorage.setItem(TRANSPARENCY_KEY, choice);
-    if (choice === "reduced") {
-      document.documentElement.dataset.transparency = "reduced";
-    } else {
-      delete document.documentElement.dataset.transparency;
-    }
+    applyTransparencyChoice(choice);
   }
 
   return (

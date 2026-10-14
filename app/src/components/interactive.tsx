@@ -297,6 +297,13 @@ export function ClaimLine({
 
 export function CopyButton({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Unmount-safe: a stale timeout firing after unmount warns in dev and
+  // flips dead state. The live region announces the copy to screen readers
+  // (the visual label change alone is silent).
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
   return (
     <button
       type="button"
@@ -304,11 +311,13 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
         try {
           await navigator.clipboard.writeText(value);
           setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => setCopied(false), 1200);
         } catch {
           /* clipboard unavailable */
         }
       }}
+      aria-live="polite"
       className="num cursor-pointer rounded border border-line-strong bg-paper-raised px-1.5 py-0.5 text-[10px] text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
     >
       {copied ? "Copied ✓" : (label ?? "Copy")}

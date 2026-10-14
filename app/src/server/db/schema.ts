@@ -985,6 +985,13 @@ export const identityClaims = pgTable(
   (t) => [index("identity_claim_patient_idx").on(t.patientId, t.status)],
 );
 
+/**
+ * Forward schema (deduplication roadmap): candidate duplicate-patient pairs
+ * awaiting human review, plus merge cases and post-merge aliases. No writers
+ * yet — the matching engine is unbuilt. Kept deliberately (migrations are
+ * append-only; dropping + re-adding later would strand prod data), NOT dead
+ * code. Wire writers before building any UI on top.
+ */
 export const identityMatches = pgTable("identity_matches", {
   id: text("id")
     .primaryKey()
@@ -1225,6 +1232,11 @@ export const jobRuns = pgTable(
   (t) => [index("job_run_status_idx").on(t.status, t.jobType)],
 );
 
+/**
+ * Forward schema: generic idempotency ledger for endpoints that need
+ * exactly-once beyond job_runs.idempotency_key. No writers yet — kept for the
+ * same append-only-migration reason as the dedup tables above.
+ */
 export const idempotencyKeys = pgTable("idempotency_keys", {
   key: text("key").primaryKey(),
   scope: text("scope").notNull(),

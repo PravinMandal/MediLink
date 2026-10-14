@@ -8,46 +8,17 @@ import { useEffect, useState } from "react";
  * no flash. Renders interactive immediately (no disabled-until-mount state):
  * the icon resolves after mount without blocking the click.
  */
-export type ThemeChoice = "light" | "dark" | "system";
-export type TransparencyChoice = "default" | "reduced";
-
-const STORAGE_KEY = "medilink-theme";
-const TRANSPARENCY_KEY = "medilink-transparency";
-
-function applyChoice(choice: ThemeChoice) {
-  const dark =
-    choice === "dark" ||
-    (choice === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-}
-
-/** Cinematic swap: circular wipe from the click point, instant fallback. */
-function cinematicApply(fn: () => void, e?: React.MouseEvent) {
-  const root = document.documentElement;
-  if (e) {
-    root.style.setProperty("--theme-x", `${e.clientX}px`);
-    root.style.setProperty("--theme-y", `${e.clientY}px`);
-  }
-  const vt = (
-    document as Document & {
-      startViewTransition?: (fn: () => void) => { finished: Promise<void> };
-    }
-  ).startViewTransition;
-  if (typeof vt === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    vt.call(document, fn);
-  } else {
-    fn();
-  }
-}
-
-function applyTransparency(choice: TransparencyChoice) {
-  if (choice === "reduced") {
-    document.documentElement.dataset.transparency = "reduced";
-  } else {
-    delete document.documentElement.dataset.transparency;
-  }
-}
+export type { ThemeChoice, TransparencyChoice } from "@/lib/theme";
+import {
+  applyThemeChoice,
+  applyTransparencyChoice,
+  cinematicApply,
+  resolveIsDark,
+  storedThemeChoice,
+  storedTransparencyChoice,
+  type ThemeChoice,
+  type TransparencyChoice,
+} from "@/lib/theme";
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [isDark, setIsDark] = useState(false);
@@ -58,24 +29,18 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     // codebase's established pattern for capability probes). Buttons stay
     // interactive throughout — only the icon resolves after mount.
     const raf = requestAnimationFrame(() => {
-      const stored = localStorage.getItem(STORAGE_KEY) as ThemeChoice | null;
-      const choice: ThemeChoice = stored ?? "system";
-      const dark =
-        choice === "dark" ||
-        (choice === "system" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
-      setIsDark(dark);
+      const choice = storedThemeChoice();
+      setIsDark(resolveIsDark(choice));
       setReducedTransparency(
-        localStorage.getItem(TRANSPARENCY_KEY) === "reduced" ||
+        storedTransparencyChoice() === "reduced" ||
           document.documentElement.dataset.transparency === "reduced",
       );
     });
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      const current = (localStorage.getItem(STORAGE_KEY) ?? "system") as ThemeChoice;
-      if (current === "system") {
-        applyChoice("system");
+      if (storedThemeChoice() === "system") {
+        applyThemeChoice("system");
         setIsDark(mq.matches);
       }
     };
@@ -88,15 +53,13 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
   const toggleTheme = (e?: React.MouseEvent) => {
     const next: ThemeChoice = isDark ? "light" : "dark";
-    localStorage.setItem(STORAGE_KEY, next);
-    cinematicApply(() => applyChoice(next), e);
+    cinematicApply(() => applyThemeChoice(next), e);
     setIsDark(!isDark);
   };
 
   const toggleTransparency = () => {
     const next: TransparencyChoice = reducedTransparency ? "default" : "reduced";
-    localStorage.setItem(TRANSPARENCY_KEY, next);
-    applyTransparency(next);
+    applyTransparencyChoice(next);
     setReducedTransparency(!reducedTransparency);
   };
 

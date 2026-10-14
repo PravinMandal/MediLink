@@ -57,7 +57,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* Pre-hydration theme: reads localStorage/system before paint so
-            dark mode never flashes. Must stay inline and blocking. */}
+            dark mode never flashes. Must stay inline and blocking (it runs
+            before any module loads, so it cannot import src/lib/theme —
+            but its keys MUST match THEME_STORAGE_KEY/TRANSPARENCY_STORAGE_KEY
+            there; a rename updates both). */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var c=localStorage.getItem("medilink-theme")||"system";var d=c==="dark"||(c==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";var t=localStorage.getItem("medilink-transparency");if(t==="reduced")document.documentElement.dataset.transparency="reduced";}catch(e){document.documentElement.dataset.theme="light";}})();`,
