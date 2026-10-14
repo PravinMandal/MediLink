@@ -891,11 +891,17 @@ export const records = {
       .limit(limit);
   },
 
-  async observationById(id: string) {
+  /**
+   * Patient-scoped observation lookup: a global by-id read is an IDOR
+   * shape, so callers pass the authorized patientId and a mismatch reads
+   * as missing (uniform failure, no existence oracle). Zero callers
+   * today — guarded at birth.
+   */
+  async observationById(id: string, patientId: string) {
     const [row] = await db
       .select()
       .from(observations)
-      .where(eq(observations.id, id));
+      .where(and(eq(observations.id, id), eq(observations.patientId, patientId)));
     return row ?? null;
   },
 

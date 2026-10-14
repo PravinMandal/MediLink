@@ -236,14 +236,22 @@ export const contradictionEngine = {
       .orderBy(desc(conflicts.detectedAt));
   },
 
-  async resolve(conflictId: string, resolvedBy: string, note?: string) {
+  /**
+   * Resolve a conflict — patient-scoped: the caller must prove the conflict
+   * belongs to `patientId` (from an authorized context, e.g. access.assert),
+   * otherwise this is a cross-patient write by row id. Zero callers today;
+   * the guard is here so the first wiring can't become an IDOR.
+   */
+  async resolve(conflictId: string, patientId: string, resolvedBy: string, note?: string) {
     // Preserve the conflict evidence: the resolution note is merged INTO the
     // existing details (replacing them would destroy what was conflicted).
     if (note) {
       const [existing] = await db
-        .select({ details: conflicts.details })
+        .select({ details: conflicts.details, patientId: conflicts.patientId })
         .from(conflicts)
         .where(eq(conflicts.id, conflictId));
+      if (!existing || existing.patientId !== patientId)
+        throw new Error("Conflict not found for this patient.");
       const details = {
         ...((existing?.details as Record<string, unknown> | null) ?? {}),
         resolutionNote: note,
@@ -254,13 +262,15 @@ export const contradictionEngine = {
         .where(eq(conflicts.id, conflictId));
       return;
     }
-    await db
+    const [updated] = await db
       .update(conflicts)
       .set({
         status: "resolved",
         resolvedBy,
         resolvedAt: new Date(),
       })
-      .where(eq(conflicts.id, conflictId));
+      .where(and(eq(conflicts.id, conflictId), eq(conflicts.patientId, patientId)))
+      .returning();
+    if (!updated) throw new Error("Conflict not found for this patient.");
   },
 };
