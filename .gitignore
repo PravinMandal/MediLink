@@ -6,8 +6,9 @@
 !.env.example
 *.pem
 
-# local embedded database (contains seeded demo data)
+# local embedded database (contains seeded demo data) + moved-aside corrupt dirs
 .pglite/
+.pglite.corrupt.*/
 
 # local document uploads (dev storage adapter)
 .uploads/

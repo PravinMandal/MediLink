@@ -34,8 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local embedded database (seeded demo data)
+# local embedded database (seeded demo data) + moved-aside corrupt dirs
 /.pglite/
+.pglite.corrupt.*/
 
 # local file uploads (dev storage adapter)
 /.uploads/

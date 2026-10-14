@@ -1,6 +1,10 @@
 // Self-contained E2E for the core consent loop on current UI:
 // revoke Sanjay setup → identifier lookup → access request → patient grants
 // (scoped) → card gone → doctor workspace lists the grant.
+//
+// Prerequisite: seed with VERIFICATION_PROVIDER=mock so the seed doctors
+// verify (with the fail-closed manual_review default the lookup form never
+// renders and this fails at `input[name="identifier"]`).
 import { chromium } from "playwright";
 const base = process.argv[2] ?? "http://localhost:3000";
 const browser = await chromium.launch();
