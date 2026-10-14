@@ -34,11 +34,15 @@ export function SectionTabs({ tabs }: { tabs: SectionTab[] }) {
     next.focus();
   };
 
+  // tabIndex={0} on the tablist: roving-tabindex arrow-key handling lives
+  // here, so the container itself must be in the tab order (otherwise the
+  // key handler is unreachable until a tab already has focus).
   return (
     <div
       ref={listRef}
       role="tablist"
       aria-label="Sections"
+      tabIndex={0}
       onKeyDown={onKeyDown}
       className="mb-4 flex gap-1 overflow-x-auto border-b border-line"
     >

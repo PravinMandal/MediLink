@@ -12,6 +12,24 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4mb",
     },
   },
+  // Research finding (practitioner guides, HIPAA): PHI pages must never sit
+  // in shared caches. Portal routes are force-dynamic (no static/ISR), and
+  // this header belt-and-braces it at the CDN/proxy layer too.
+  async headers() {
+    return [
+      {
+        source: "/portal/:path*",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+          { key: "Pragma", value: "no-cache" },
+        ],
+      },
+      {
+        source: "/api/files/:path*",
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

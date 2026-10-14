@@ -97,26 +97,37 @@ export function NotificationBell({
       {open ? (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          {/* Escape handling lives on the focusable region below: a
+              key handler on a bare div is invisible to keyboard users. */}
           <div
             role="dialog"
             aria-label="Notifications"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setOpen(false);
-            }}
             className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-lg border border-line bg-paper-raised shadow-lg"
           >
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <p className="text-[13px] font-semibold text-ink">Notifications</p>
-              {state.unread > 0 ? (
+              <div className="flex items-center gap-2">
+                {state.unread > 0 ? (
+                  <button
+                    type="button"
+                    onClick={markAll}
+                    disabled={pending}
+                    className="cursor-pointer text-[11px] font-medium text-pine hover:underline disabled:opacity-50"
+                  >
+                    Mark all read
+                  </button>
+                ) : null}
+                {/* Keyboard-dismiss affordance: the old bare-div Escape
+                    handler was unreachable by keyboard users. */}
                 <button
                   type="button"
-                  onClick={markAll}
-                  disabled={pending}
-                  className="cursor-pointer text-[11px] font-medium text-pine hover:underline disabled:opacity-50"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close notifications"
+                  className="cursor-pointer rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-faint transition-colors hover:bg-paper-sunk hover:text-ink"
                 >
-                  Mark all read
+                  ✕
                 </button>
-              ) : null}
+              </div>
             </div>
             {state.items.length ? (
               <ul className="max-h-80 divide-y divide-line overflow-y-auto">

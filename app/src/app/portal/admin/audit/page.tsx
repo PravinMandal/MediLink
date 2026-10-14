@@ -102,12 +102,19 @@ export default async function AdminAuditPage() {
           title={`Recent (${recentAudit.length})`}
         />
         {recentAudit.length ? (
+          <>
+          {/* Scrollable log needs keyboard access: role="region" + label
+              makes it a landmark, tabIndex={0} puts it in the tab order.
+              (jsx-a11y flags ul+tabIndex, but region-landmark scroll areas
+              are the documented exception.) */}
+          {/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- region landmark scroll area */}
           <ul
             tabIndex={0}
             role="region"
             aria-label="Recent audit events (scrollable)"
             className="max-h-[560px] divide-y divide-line overflow-y-auto"
           >
+          {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
           {recentAudit.map((e) => (
             <li key={e.seq} className="flex items-center justify-between gap-2 px-4 py-2 sm:px-5">
               <div className="min-w-0">
@@ -132,6 +139,7 @@ export default async function AdminAuditPage() {
             </li>
           ))}
           </ul>
+          </>
         ) : (
           <div className="p-5">
             <EmptyState

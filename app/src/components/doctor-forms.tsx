@@ -172,6 +172,10 @@ export function BreakGlassForm({ patientId }: { patientId?: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
+        // Direct accessible name: the visible text is nested 3 spans deep
+        // (past the rule's static-analysis depth) and includes a decorative
+        // arrow — a label keeps screen-reader output clean.
+        aria-label="Start an emergency window. For genuine emergencies only — requires a clinical reason and password confirmation."
         className="glass-hover group w-full cursor-pointer rounded-xl border border-alert/50 bg-alert-tint px-4 py-4 text-left transition-all hover:border-alert hover:shadow-md"
       >
         <span className="flex items-center gap-3">
