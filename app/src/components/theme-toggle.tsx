@@ -42,9 +42,9 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     };
   }, []);
 
-  const toggleTheme = (e?: React.MouseEvent) => {
+  const toggleTheme = () => {
     const next: ThemeChoice = isDark ? "light" : "dark";
-    cinematicApply(() => applyThemeChoice(next), e);
+    cinematicApply(() => applyThemeChoice(next));
     setIsDark(!isDark);
   };
 

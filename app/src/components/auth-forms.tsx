@@ -112,15 +112,13 @@ export function OrDivider() {
 export function SocialButtons({
   google,
   apple,
-  mode: _mode,
   callbackURL = "/portal",
 }: {
   google: boolean;
   apple: boolean;
-  mode: "in" | "up";
+  mode?: "in" | "up";
   callbackURL?: string;
 }) {
-  void _mode;
   const [pending, setPending] = useState<"google" | "apple" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // Reference copy: always "Continue with …" for both sign-in and sign-up.
@@ -128,9 +126,6 @@ export function SocialButtons({
 
   const btn =
     "flex h-12 w-full items-center justify-center gap-2.5 rounded-2xl border border-line-strong bg-[#1E232E] px-4 text-[14px] font-semibold text-white transition-all duration-200 hover:border-white/20 hover:bg-[#262C38] hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#1E232E] dark:text-white [.light_&]:bg-[#1E232E]";
-
-  const lightBtn =
-    "flex h-12 w-full items-center justify-center gap-2.5 rounded-2xl border border-line-strong bg-paper-raised px-4 text-[14px] font-semibold text-ink transition-all duration-200 hover:border-ink-faint hover:bg-paper-sunk active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60";
 
   // Reference-faithful: both providers always visible. Without keys the
   // button is disabled with an explanatory title — the layout never jumps
@@ -211,7 +206,6 @@ export function SocialButtons({
       {note ? (
         <p role="alert" className="text-center text-[12px] text-alert">{note}</p>
       ) : null}
-      {void lightBtn}
     </div>
   );
 }

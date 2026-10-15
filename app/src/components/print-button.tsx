@@ -7,7 +7,7 @@ import { useState } from "react";
  * printing via a body class toggled around window.print().
  */
 export function PrintCardButton({
-  label = "🖨 Print",
+  label = "Print",
   className,
 }: {
   label?: string;
@@ -18,6 +18,7 @@ export function PrintCardButton({
     <button
       type="button"
       disabled={printing}
+      aria-label="Print"
       onClick={async () => {
         setPrinting(true);
         const host = document.body;

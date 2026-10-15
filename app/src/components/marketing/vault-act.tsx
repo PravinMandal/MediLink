@@ -181,6 +181,22 @@ export function VaultAct() {
   );
   const [grant, setGrant] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [inView, setInView] = useState(false);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+
+  // IO-gate the WebGL mount: the scene lives below the fold, so don't
+  // create the GL context (or run the frameloop) until it scrolls near.
+  useEffect(() => {
+    if (reduced || failed) return;
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "400px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reduced, failed]);
   const lastBeat = useRef(0);
   const sectionRef = useRef<HTMLElement>(null);
   const captionRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -254,9 +270,11 @@ export function VaultAct() {
   return (
     <section ref={sectionRef} aria-label="How a record travels in 3D" className="landing-dark relative h-[400vh]">
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
-        <div className="absolute inset-0" aria-hidden={false}>
+        <div ref={canvasWrapRef} className="absolute inset-0" aria-hidden="true">
+          {inView ? (
           <Canvas
-            dpr={coarse ? 1 : [1, 2]}
+            dpr={coarse ? 1 : [1, 1.5]}
+            frameloop="always"
             gl={{ antialias: !coarse, alpha: false, powerPreference: "high-performance" }}
             camera={{ position: [0, 0.4, 7.5], fov: 42 }}
             onCreated={({ gl }) => gl.setClearColor("#060a14")}
@@ -271,6 +289,7 @@ export function VaultAct() {
               <VaultScene progress={progress} coarse={coarse} />
             </Suspense>
           </Canvas>
+          ) : null}
         </div>
         {/* DOM captions — same progress value, always in the a11y tree in order */}
         <div className="pointer-events-none absolute inset-0 z-10 mx-auto w-full max-w-7xl px-6 sm:px-12">
@@ -281,6 +300,8 @@ export function VaultAct() {
               className="absolute inset-x-6 top-1/2 -translate-y-1/2 transition-opacity duration-300 sm:inset-x-12"
               style={{ opacity: i === 0 ? 1 : 0 }}
               aria-hidden={i !== 0}
+              // @ts-expect-error inert is valid HTML but missing from React 19 types
+              inert={i !== 0 ? "" : undefined}
             >
               <div className="max-w-sm">
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#6fa8ff]">{b.eyebrow}</p>

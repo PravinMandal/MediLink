@@ -35,7 +35,7 @@ export function storedThemeChoice(): ThemeChoice {
  * motion. The click point is accepted but ignored — the dissolve has no
  * origin — so callers keep their signatures.
  */
-export function cinematicApply(fn: () => void, _e?: { clientX: number; clientY: number }): void {
+export function cinematicApply(fn: () => void): void {
   const vt = (
     document as Document & { startViewTransition?: (fn: () => void) => unknown }
   ).startViewTransition;

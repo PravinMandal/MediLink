@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { ChevronDown, PenLine } from "lucide-react";
 import { cn, formatDate, TRUST_LABEL } from "@/lib/utils";
 import { Badge } from "./ui";
@@ -79,16 +79,22 @@ function CorrectRecordForm({
   onDone: () => void;
 }) {
   const [state, action] = useActionState(correctRecordAction, {});
+  const closedRef = useRef(false);
+  // Close only on success — validation errors stay visible in the form.
+  // (Ref, not state, so this is not setState-in-effect per the lint rule.)
+  useEffect(() => {
+    if (state?.ok && !closedRef.current) {
+      closedRef.current = true;
+      onDone();
+    }
+  }, [state, onDone]);
   const p = item.payload ?? {};
   const field =
     "h-9 w-full rounded-lg border border-line-strong bg-paper-raised px-2.5 text-[13px] text-ink placeholder:text-ink-faint focus:border-pine focus:outline-none";
 
   return (
     <form
-      action={async (fd) => {
-        await action(fd);
-        onDone();
-      }}
+      action={action}
       className="mt-2 space-y-2.5 rounded-lg border border-line bg-paper-sunk p-3"
     >
       <input type="hidden" name="patientId" value={patientId} />

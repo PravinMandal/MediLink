@@ -16,11 +16,6 @@
     "verify:e2e": "node scripts/e2e-audit.mjs",
     "verify:a11y": "node scripts/axe-check.mjs && node scripts/contrast-check.mjs && node scripts/dark-audit.mjs",
     "verify:journey": "node scripts/signup-journey-check.mjs && node scripts/consent-inbox-check.mjs && node scripts/timeline-check.mjs && node scripts/breakglass-check.mjs",
-    "verify:prod": "node scripts/admin-prod-check.mjs && node scripts/org-prod-check.mjs && node scripts/abha-check.mjs && node scripts/scan-path-check.mjs && npx tsx scripts/qr-check.mjs",
-    "verify": "node scripts/verify.mjs",
-    "verify:e2e": "node scripts/e2e-audit.mjs",
-    "verify:a11y": "node scripts/axe-check.mjs && node scripts/contrast-check.mjs && node scripts/dark-audit.mjs",
-    "verify:journey": "node scripts/signup-journey-check.mjs && node scripts/consent-inbox-check.mjs && node scripts/timeline-check.mjs && node scripts/breakglass-check.mjs",
     "verify:prod": "node scripts/admin-prod-check.mjs && node scripts/org-prod-check.mjs && node scripts/abha-check.mjs && node scripts/scan-path-check.mjs && npx tsx scripts/qr-check.mjs"
   },
   "dependencies": {

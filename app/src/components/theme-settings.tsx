@@ -33,16 +33,16 @@ export function ThemeSettings() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  function applyTheme(choice: ThemeChoice, e?: React.MouseEvent) {
+  function applyTheme(choice: ThemeChoice) {
     setTheme(choice);
-    cinematicApply(() => applyThemeChoice(choice), e);
+    cinematicApply(() => applyThemeChoice(choice));
   }
 
   return (
     <div className="space-y-6 px-4 py-5 sm:px-6">
       <fieldset>
         <legend className="mb-2.5 text-[13px] font-semibold text-ink">Appearance</legend>
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div role="radiogroup" aria-label="Appearance" className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           {OPTIONS.map((opt) => {
             const Icon = opt.icon;
             const active = mounted && theme === opt.value;
@@ -50,8 +50,16 @@ export function ThemeSettings() {
               <button
                 key={opt.value}
                 type="button"
-                onClick={(e) => applyTheme(opt.value, e)}
-                aria-pressed={active}
+                role="radio"
+                aria-checked={active}
+                onClick={() => applyTheme(opt.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+                  e.preventDefault();
+                  const idx = OPTIONS.findIndex((o) => o.value === opt.value);
+                  const next = OPTIONS[(idx + (e.key === "ArrowRight" ? 1 : OPTIONS.length - 1)) % OPTIONS.length];
+                  applyTheme(next.value);
+                }}
                 className={cn(
                   "glass-hover flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left",
                   active
