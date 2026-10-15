@@ -26,10 +26,11 @@ const nextConfig: NextConfig = {
   // this header belt-and-braces it at the CDN/proxy layer too.
   async headers() {
     // Baseline clickjacking/MIME/referrer posture for every route (portal
-    // ones get the PHI no-store layer on top). No CSP yet: Next.js inlines
-    // bootstrapping scripts that a strict policy would break — that needs a
-    // nonce-based policy once the app stabilizes, not a header that 500s
-    // the portal on deploy day.
+    // ones get the PHI no-store layer on top). CSP deliberately lives in
+    // src/proxy.ts, not here: the policy carries a per-request nonce, which
+    // a static next.config header cannot mint. The proxy sets it on every
+    // matched page request; routes the proxy skips (API, _next/static) need
+    // no script policy.
     const baseline = [
       // PHI must never render inside an attacker's iframe.
       { key: "X-Frame-Options", value: "DENY" },
