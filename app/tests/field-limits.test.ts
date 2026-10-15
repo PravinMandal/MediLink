@@ -29,6 +29,41 @@ describe("field()", () => {
   });
 });
 
+describe("new call-site limits", () => {
+  it("rejects over-limit reason (long, 5000)", () => {
+    const big = "r".repeat(FIELD_LIMITS.long + 1);
+    expect(field(big, FIELD_LIMITS.long, { label: "Reason", required: true }).ok).toBe(false);
+  });
+
+  it("rejects over-limit id (short, 200)", () => {
+    const big = "i".repeat(FIELD_LIMITS.short + 1);
+    const r = field(big, FIELD_LIMITS.short, { label: "Document", required: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/200/);
+  });
+
+  it("rejects over-limit password budget (512, never truncates)", () => {
+    // Mirrors PASSWORD_MAX in auth-actions: reject, don't truncate.
+    const big = "p".repeat(513);
+    expect(field(big, 512, { label: "Password" }).ok).toBe(false);
+    expect(field("p".repeat(512), 512, { label: "Password" })).toEqual({
+      ok: true,
+      value: "p".repeat(512),
+    });
+  });
+
+  it("accepts optional purpose detail within long limit", () => {
+    const r = optField("Follow-up visit", FIELD_LIMITS.long, { label: "Purpose detail" });
+    expect(r).toEqual({ ok: true, value: "Follow-up visit" });
+  });
+
+  it("rejects over-limit optional notes", () => {
+    const big = "n".repeat(FIELD_LIMITS.long + 1);
+    const r = optField(big, FIELD_LIMITS.long, { label: "Notes" });
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe("optField()", () => {
   it("maps empty to undefined", () => {
     expect(optField(null, FIELD_LIMITS.long)).toEqual({ ok: true, value: undefined });

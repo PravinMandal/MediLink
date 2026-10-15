@@ -39,13 +39,23 @@ export async function submitVerificationAction(
   const user = await requireUser();
   if (user.role !== "doctor") return { error: "Only doctor accounts submit practitioner verification." };
   try {
+    const fullNameR = field(formData.get("fullName"), FIELD_LIMITS.short, { label: "Full name", required: true });
+    if (!fullNameR.ok) return { error: fullNameR.error };
+    const regR = field(formData.get("registrationNumber"), FIELD_LIMITS.short, { label: "Registration number", required: true });
+    if (!regR.ok) return { error: regR.error };
+    const councilR = optField(formData.get("council"), FIELD_LIMITS.short, { label: "Council" });
+    if (!councilR.ok) return { error: councilR.error };
+    const qualR = optField(formData.get("qualification"), FIELD_LIMITS.short, { label: "Qualification" });
+    if (!qualR.ok) return { error: qualR.error };
+    const specialtyR = optField(formData.get("specialty"), FIELD_LIMITS.short, { label: "Specialty" });
+    if (!specialtyR.ok) return { error: specialtyR.error };
     await submitPractitionerVerification({
       userId: user.id,
-      fullName: String(formData.get("fullName") ?? "").trim(),
-      registrationNumber: String(formData.get("registrationNumber") ?? "").trim(),
-      council: String(formData.get("council") ?? "").trim() || undefined,
-      qualification: String(formData.get("qualification") ?? "").trim() || undefined,
-      specialty: String(formData.get("specialty") ?? "").trim() || undefined,
+      fullName: fullNameR.value,
+      registrationNumber: regR.value,
+      council: councilR.value,
+      qualification: qualR.value,
+      specialty: specialtyR.value,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
@@ -65,9 +75,12 @@ export async function addClinicalRecordAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
-  const kind = String(formData.get("kind") ?? "");
-  if (!patientId || !kind) return { error: "Missing patient or record type." };
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const kindR = field(formData.get("kind"), FIELD_LIMITS.short, { label: "Record type", required: true });
+  if (!kindR.ok) return { error: kindR.error };
+  const patientId = patientR.value;
+  const kind = kindR.value;
 
   try {
     const practitioner = await requireVerifiedPractitioner(user.id);
@@ -98,12 +111,16 @@ export async function addClinicalRecordAction(
         if (!nameR.ok) return { error: nameR.error };
         const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
         if (!notesR.ok) return { error: notesR.error };
+        const statusR = field(formData.get("status") ?? "active", FIELD_LIMITS.short, { label: "Status" });
+        if (!statusR.ok) return { error: statusR.error };
+        const onsetR = optField(formData.get("onsetDate"), FIELD_LIMITS.short, { label: "Onset date" });
+        if (!onsetR.ok) return { error: onsetR.error };
         await records.addCondition(
           patientId,
           {
             name: nameR.value,
-            status: (String(formData.get("status") ?? "active") as "active" | "chronic" | "resolved"),
-            onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
+            status: (statusR.value as "active" | "chronic" | "resolved"),
+            onsetDate: onsetR.value,
             notes: notesR.value,
           },
           prov,
@@ -135,13 +152,15 @@ export async function addClinicalRecordAction(
         if (!doseR.ok) return { error: doseR.error };
         const frequencyR = optField(formData.get("frequency"), FIELD_LIMITS.medium, { label: "Frequency" });
         if (!frequencyR.ok) return { error: frequencyR.error };
+        const startR = optField(formData.get("startDate"), FIELD_LIMITS.short, { label: "Start date" });
+        if (!startR.ok) return { error: startR.error };
         await records.addMedication(
           patientId,
           {
             medication: medicationR.value,
             dose: doseR.value,
             frequency: frequencyR.value,
-            startDate: String(formData.get("startDate") ?? "") || undefined,
+            startDate: startR.value,
             prescriberId: practitioner.id,
           },
           prov,
@@ -159,6 +178,8 @@ export async function addClinicalRecordAction(
         if (!panelR.ok) return { error: panelR.error };
         const unitR = optField(formData.get("unit"), FIELD_LIMITS.medium, { label: "Unit" });
         if (!unitR.ok) return { error: unitR.error };
+        const effectiveR = optField(formData.get("effectiveDate"), FIELD_LIMITS.short, { label: "Effective date" });
+        if (!effectiveR.ok) return { error: effectiveR.error };
         await records.addObservation(
           patientId,
           {
@@ -167,7 +188,7 @@ export async function addClinicalRecordAction(
             value: numeric != null && Number.isFinite(numeric) ? numeric : null,
             valueString: numeric == null ? rawValue || null : null,
             unit: unitR.value,
-            effectiveDate: String(formData.get("effectiveDate") ?? "") || undefined,
+            effectiveDate: effectiveR.value,
           },
           prov,
         );
@@ -178,11 +199,13 @@ export async function addClinicalRecordAction(
         if (!nameR.ok) return { error: nameR.error };
         const outcomeR = optField(formData.get("outcome"), FIELD_LIMITS.long, { label: "Outcome" });
         if (!outcomeR.ok) return { error: outcomeR.error };
+        const performedR = optField(formData.get("performedDate"), FIELD_LIMITS.short, { label: "Performed date" });
+        if (!performedR.ok) return { error: performedR.error };
         await records.addProcedure(
           patientId,
           {
             name: nameR.value,
-            performedDate: String(formData.get("performedDate") ?? "") || undefined,
+            performedDate: performedR.value,
             outcome: outcomeR.value,
           },
           prov,
@@ -216,8 +239,12 @@ export async function retryExtractionAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
-  const documentId = String(formData.get("documentId") ?? "");
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const documentR = field(formData.get("documentId"), FIELD_LIMITS.short, { label: "Document", required: true });
+  if (!documentR.ok) return { error: documentR.error };
+  const patientId = patientR.value;
+  const documentId = documentR.value;
 
   // Consent + role: same gate as viewing documents for this patient.
   const decision = await access.check(
@@ -295,17 +322,24 @@ export async function uploadDocumentAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
   const file = formData.get("file");
-  const title = String(formData.get("title") ?? "").trim();
-  const kind = String(formData.get("kind") ?? "lab_report") as Parameters<
+  const titleR = field(formData.get("title"), FIELD_LIMITS.short, { label: "Title", required: true });
+  if (!titleR.ok) return { error: titleR.error };
+  const kindR = field(formData.get("kind") ?? "lab_report", FIELD_LIMITS.short, { label: "Kind" });
+  if (!kindR.ok) return { error: kindR.error };
+  const kind = kindR.value as Parameters<
     typeof ingestDocumentV2
   >[0]["kind"];
-  const recordedDate = String(formData.get("recordedDate") ?? "") || undefined;
+  const recordedR = optField(formData.get("recordedDate"), FIELD_LIMITS.short, { label: "Recorded date" });
+  if (!recordedR.ok) return { error: recordedR.error };
+  const recordedDate = recordedR.value;
+  const patientId = patientR.value;
+  const title = titleR.value;
 
-  if (!patientId) return { error: "Missing patient." };
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file to upload." };
-  if (!title) return { error: "Give the document a title." };
+  if (file.name.length > FIELD_LIMITS.short) return { error: "File name is too long (max 200 characters). Rename it and try again." };
 
   try {
     if (user.role === "doctor") {
@@ -411,9 +445,12 @@ export async function generateSummaryAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
-  const question = String(formData.get("question") ?? "").trim() || undefined;
-  if (!patientId) return { error: "Missing patient." };
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const questionR = optField(formData.get("question"), FIELD_LIMITS.long, { label: "Question" });
+  if (!questionR.ok) return { error: questionR.error };
+  const patientId = patientR.value;
+  const question = questionR.value;
 
   try {
     // "*" requires any active grant (or emergency); the decision's scopes
@@ -459,10 +496,18 @@ export async function breakGlassAction(
   const user = await requireUser();
   // Accept either a resolved patientId (record page) or a raw identifier
   // typed into the dedicated emergency page (§6.2 #3).
-  let patientId = String(formData.get("patientId") ?? "");
-  const identifier = String(formData.get("patientIdText") ?? "").trim();
-  const reason = String(formData.get("reason") ?? "").trim();
-  const stepUpPassword = String(formData.get("stepUpPassword") ?? "");
+  const patientIdR = optField(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient" });
+  if (!patientIdR.ok) return { error: patientIdR.error };
+  let patientId = patientIdR.value ?? "";
+  const identifierR = optField(formData.get("patientIdText"), FIELD_LIMITS.short, { label: "Patient identifier" });
+  if (!identifierR.ok) return { error: identifierR.error };
+  const identifier = identifierR.value ?? "";
+  const reasonR = optField(formData.get("reason"), FIELD_LIMITS.long, { label: "Reason" });
+  if (!reasonR.ok) return { error: reasonR.error };
+  const reason = reasonR.value ?? "";
+  const stepUpR = optField(formData.get("stepUpPassword"), FIELD_LIMITS.short, { label: "Password" });
+  if (!stepUpR.ok) return { error: stepUpR.error };
+  const stepUpPassword = stepUpR.value ?? "";
 
   if (!patientId && identifier) {
     const { discovery } = await import("@/server/modules/identity/discovery");
@@ -551,12 +596,19 @@ export async function correctRecordAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
-  const originalTypeRaw = String(formData.get("originalType") ?? "");
-  const originalId = String(formData.get("originalId") ?? "");
-  const reason = String(formData.get("reason") ?? "").trim();
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const patientId = patientR.value;
+  const originalTypeRawR = field(formData.get("originalType"), FIELD_LIMITS.short, { label: "Record type" });
+  if (!originalTypeRawR.ok) return { error: originalTypeRawR.error };
+  const originalTypeRaw = originalTypeRawR.value;
+  const originalR = field(formData.get("originalId"), FIELD_LIMITS.short, { label: "Record", required: true });
+  if (!originalR.ok) return { error: originalR.error };
+  const originalId = originalR.value;
+  const reasonR = field(formData.get("reason"), FIELD_LIMITS.long, { label: "Correction reason", required: true });
+  if (!reasonR.ok) return { error: reasonR.error };
+  const reason = reasonR.value;
 
-  if (!patientId || !originalId) return { error: "Missing record to correct." };
   const originalType = CORRECTABLE[originalTypeRaw];
   if (!originalType) return { error: "This record type cannot be corrected here." };
   if (reason.length < 10)
@@ -592,39 +644,61 @@ export async function correctRecordAction(
 
     let data: Parameters<typeof records.correct>[0]["data"];
     if (originalType === "condition") {
-      const name = String(formData.get("name") ?? "").trim();
-      if (!name) return { error: "Condition name is required." };
+      const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Condition name", required: true });
+      if (!nameR.ok) return { error: nameR.error };
+      const statusR = field(formData.get("status") ?? "active", FIELD_LIMITS.short, { label: "Status" });
+      if (!statusR.ok) return { error: statusR.error };
+      const onsetR = optField(formData.get("onsetDate"), FIELD_LIMITS.short, { label: "Onset date" });
+      if (!onsetR.ok) return { error: onsetR.error };
+      const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+      if (!notesR.ok) return { error: notesR.error };
       data = {
         kind: "condition",
-        name,
-        status: String(formData.get("status") ?? "active") as
+        name: nameR.value,
+        status: statusR.value as
           | "active"
           | "resolved"
           | "chronic",
-        onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
-        notes: String(formData.get("notes") ?? "") || undefined,
+        onsetDate: onsetR.value,
+        notes: notesR.value,
       };
     } else if (originalType === "allergy") {
-      const substance = String(formData.get("substance") ?? "").trim();
-      if (!substance) return { error: "Allergy substance is required." };
+      const substanceR = field(formData.get("substance"), FIELD_LIMITS.short, { label: "Allergy substance", required: true });
+      if (!substanceR.ok) return { error: substanceR.error };
+      const critR = optField(formData.get("criticality"), FIELD_LIMITS.medium, { label: "Criticality" });
+      if (!critR.ok) return { error: critR.error };
+      const reactR = optField(formData.get("reaction"), FIELD_LIMITS.medium, { label: "Reaction" });
+      if (!reactR.ok) return { error: reactR.error };
+      const onsetR = optField(formData.get("onsetDate"), FIELD_LIMITS.short, { label: "Onset date" });
+      if (!onsetR.ok) return { error: onsetR.error };
       data = {
         kind: "allergy",
-        substance,
-        criticality: String(formData.get("criticality") ?? "") || undefined,
-        reaction: String(formData.get("reaction") ?? "") || undefined,
-        onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
+        substance: substanceR.value,
+        criticality: critR.value,
+        reaction: reactR.value,
+        onsetDate: onsetR.value,
       };
     } else {
-      const medication = String(formData.get("medication") ?? "").trim();
-      if (!medication) return { error: "Medication name is required." };
+      const medicationR = field(formData.get("medication"), FIELD_LIMITS.short, { label: "Medication name", required: true });
+      if (!medicationR.ok) return { error: medicationR.error };
+      const doseR = optField(formData.get("dose"), FIELD_LIMITS.medium, { label: "Dose" });
+      if (!doseR.ok) return { error: doseR.error };
+      const routeR = optField(formData.get("route"), FIELD_LIMITS.medium, { label: "Route" });
+      if (!routeR.ok) return { error: routeR.error };
+      const freqR = optField(formData.get("frequency"), FIELD_LIMITS.medium, { label: "Frequency" });
+      if (!freqR.ok) return { error: freqR.error };
+      const startR = optField(formData.get("startDate"), FIELD_LIMITS.short, { label: "Start date" });
+      if (!startR.ok) return { error: startR.error };
+      const statusR = field(formData.get("status") ?? "active", FIELD_LIMITS.short, { label: "Status" });
+      if (!statusR.ok) return { error: statusR.error };
       data = {
         kind: "medication",
-        medication,
-        dose: String(formData.get("dose") ?? "") || undefined,
-        route: String(formData.get("route") ?? "") || undefined,
-        frequency: String(formData.get("frequency") ?? "") || undefined,
-        startDate: String(formData.get("startDate") ?? "") || undefined,
-        status: String(formData.get("status") ?? "active") as
+        medication: medicationR.value,
+        dose: doseR.value,
+        route: routeR.value,
+        frequency: freqR.value,
+        startDate: startR.value,
+        status: statusR.value as
           | "active"
           | "stopped"
           | "completed",
@@ -679,11 +753,18 @@ export async function resolveDisputeAction(
 ): Promise<FormState> {
   const user = await requireUser();
   if (user.role !== "doctor") return { error: "Only clinicians resolve concerns." };
-  const disputeId = String(formData.get("disputeId") ?? "").trim();
-  const patientId = String(formData.get("patientId") ?? "").trim();
-  const decision = String(formData.get("decision") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
-  if (!disputeId || !patientId) return { error: "Missing concern." };
+  const disputeR = field(formData.get("disputeId"), FIELD_LIMITS.short, { label: "Concern", required: true });
+  if (!disputeR.ok) return { error: disputeR.error };
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const disputeId = disputeR.value;
+  const patientId = patientR.value;
+  const decisionR = field(formData.get("decision"), FIELD_LIMITS.short, { label: "Decision", required: true });
+  if (!decisionR.ok) return { error: decisionR.error };
+  const decision = decisionR.value;
+  const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+  if (!notesR.ok) return { error: notesR.error };
+  const notes = notesR.value ?? "";
   if (decision !== "confirm" && decision !== "dismiss") {
     return { error: "Choose whether the concern is confirmed or dismissed." };
   }

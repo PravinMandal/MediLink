@@ -10,6 +10,7 @@ import {
   requireVerifiedPractitioner,
 } from "@/server/modules/identity/verification";
 import type { FormState } from "./auth-actions";
+import { field, optField, FIELD_LIMITS } from "@/server/modules/security/field";
 import { db } from "@/server/db";
 import { organizations, practitioners } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -29,6 +30,11 @@ export type LookupResult =
 /** Lookup by Patient ID / verified ABHA — never by name or phone. */
 export async function lookupPatientAction(identifier: string): Promise<LookupResult> {
   const user = await requireUser();
+  const idR = field(identifier, FIELD_LIMITS.short, { label: "Identifier", required: true });
+  if (!idR.ok) {
+    return { status: "invalid", message: idR.error };
+  }
+  identifier = idR.value;
   if (user.role !== "doctor") {
     return { status: "invalid", message: "Only clinician accounts look up patients." };
   }
@@ -95,6 +101,11 @@ export async function redeemHandoffAction(
   code: string,
 ): Promise<{ ok: true; patientId: string } | { ok: false; message: string }> {
   const user = await requireUser();
+  const codeR = field(code, FIELD_LIMITS.short, { label: "Sharing code", required: true });
+  if (!codeR.ok) {
+    return { ok: false, message: codeR.error };
+  }
+  code = codeR.value;
   if (user.role !== "doctor") {
     return { ok: false, message: "Only clinician accounts redeem sharing codes." };
   }
@@ -113,12 +124,22 @@ export async function createAccessRequestAction(
 ): Promise<FormState> {
   const user = await requireUser();
   if (user.role !== "doctor") return { error: "Only clinician accounts request access." };
-  const patientId = String(formData.get("patientId") ?? "");
-  const purpose = String(formData.get("purpose") ?? "treatment");
-  const purposeDetail = String(formData.get("purposeDetail") ?? "").trim() || undefined;
-  const visitReference = String(formData.get("visitReference") ?? "").trim() || undefined;
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const patientId = patientR.value;
+  const purposeR = field(formData.get("purpose") ?? "treatment", FIELD_LIMITS.short, { label: "Purpose" });
+  if (!purposeR.ok) return { error: purposeR.error };
+  const purpose = purposeR.value;
+  const purposeDetailR = optField(formData.get("purposeDetail"), FIELD_LIMITS.long, { label: "Purpose detail" });
+  if (!purposeDetailR.ok) return { error: purposeDetailR.error };
+  const purposeDetail = purposeDetailR.value;
+  const visitRefR = optField(formData.get("visitReference"), FIELD_LIMITS.short, { label: "Visit reference" });
+  if (!visitRefR.ok) return { error: visitRefR.error };
+  const visitReference = visitRefR.value;
   const days = Number(formData.get("days") ?? 7);
   const suggested = formData.getAll("suggestedScopes").map(String);
+  if (suggested.some((s) => s.length > FIELD_LIMITS.short))
+    return { error: "One of the suggested scopes is too long." };
 
   if (!patientId) return { error: "Missing patient." };
   if (!Number.isFinite(days) || days < 1 || days > 90) {
@@ -184,11 +205,19 @@ export async function decideAccessRequestAction(
 ): Promise<FormState> {
   const user = await requireUser();
   if (user.role !== "patient") return { error: "Only the patient decides access requests." };
-  const requestId = String(formData.get("requestId") ?? "");
-  const decision = String(formData.get("decision") ?? "");
+  const requestR = field(formData.get("requestId"), FIELD_LIMITS.short, { label: "Request", required: true });
+  if (!requestR.ok) return { error: requestR.error };
+  const requestId = requestR.value;
+  const decisionR = field(formData.get("decision"), FIELD_LIMITS.short, { label: "Decision", required: true });
+  if (!decisionR.ok) return { error: decisionR.error };
+  const decision = decisionR.value;
   const approvedScopes = formData.getAll("scopes").map(String);
+  if (approvedScopes.some((s) => s.length > FIELD_LIMITS.short))
+    return { error: "One of the selected scopes is too long." };
   const days = Number(formData.get("days") ?? 0) || undefined;
-  const reason = String(formData.get("reason") ?? "").trim() || undefined;
+  const reasonR = optField(formData.get("reason"), FIELD_LIMITS.long, { label: "Reason" });
+  if (!reasonR.ok) return { error: reasonR.error };
+  const reason = reasonR.value;
 
   if (!requestId || !["approve", "decline"].includes(decision)) {
     return { error: "Invalid decision." };
@@ -245,9 +274,12 @@ export async function reportConcernAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const requestId = String(formData.get("requestId") ?? "");
-  const reason = String(formData.get("reason") ?? "").trim();
-  if (!requestId) return { error: "Missing request." };
+  const requestR = field(formData.get("requestId"), FIELD_LIMITS.short, { label: "Request", required: true });
+  if (!requestR.ok) return { error: requestR.error };
+  const requestId = requestR.value;
+  const reasonRaw = field(formData.get("reason"), FIELD_LIMITS.long, { label: "Concern", required: true });
+  if (!reasonRaw.ok) return { error: reasonRaw.error };
+  const reason = reasonRaw.value;
   if (reason.length < 5) return { error: "Describe your concern briefly." };
 
   // Verify the request targets THIS patient's record: without this, any

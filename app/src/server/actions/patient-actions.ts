@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { user as userTable } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
 import { patientService } from "@/server/modules/patients/service";
+import { field, optField, FIELD_LIMITS } from "@/server/modules/security/field";
 import { consent, type ConsentScope } from "@/server/modules/consent/service";
 import { getPractitionerForUser } from "@/server/modules/identity/verification";
 import { audit } from "@/server/modules/audit/service";
@@ -22,16 +23,26 @@ export async function updatePatientProfileAction(
   if (!patient) return { error: "No patient record linked to this account." };
 
   try {
+    const phoneR = optField(formData.get("phone"), FIELD_LIMITS.short, { label: "Phone" });
+    if (!phoneR.ok) return { error: phoneR.error };
+    const cityR = optField(formData.get("city"), FIELD_LIMITS.short, { label: "City" });
+    if (!cityR.ok) return { error: cityR.error };
+    const ecNameR = optField(formData.get("ecName"), FIELD_LIMITS.short, { label: "Emergency contact name" });
+    if (!ecNameR.ok) return { error: ecNameR.error };
+    const ecPhoneR = optField(formData.get("ecPhone"), FIELD_LIMITS.short, { label: "Emergency contact phone" });
+    if (!ecPhoneR.ok) return { error: ecPhoneR.error };
+    const bloodGroupR = optField(formData.get("bloodGroup"), FIELD_LIMITS.short, { label: "Blood group" });
+    if (!bloodGroupR.ok) return { error: bloodGroupR.error };
+    const abhaR = optField(formData.get("abha"), FIELD_LIMITS.short, { label: "ABHA number" });
+    if (!abhaR.ok) return { error: abhaR.error };
     await patientService.updateSelf(user.id, patient.id, {
-      phone: String(formData.get("phone") ?? "") || undefined,
-      addressCity: String(formData.get("city") ?? "") || undefined,
-      emergencyContactName: String(formData.get("ecName") ?? "") || undefined,
-      emergencyContactPhone: String(formData.get("ecPhone") ?? "") || undefined,
-      bloodGroupSelfReported:
-        String(formData.get("bloodGroup") ?? "") || undefined,
+      phone: phoneR.value,
+      addressCity: cityR.value,
+      emergencyContactName: ecNameR.value,
+      emergencyContactPhone: ecPhoneR.value,
+      bloodGroupSelfReported: bloodGroupR.value,
       // 14-digit ABHA; digits/hyphens normalized, otherwise cleared.
-      abhaNumber:
-        String(formData.get("abha") ?? "").replace(/[\s-]/g, "") || undefined,
+      abhaNumber: abhaR.value?.replace(/[\s-]/g, "") || undefined,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
@@ -57,7 +68,9 @@ export async function grantConsentAction(
   const patient = await patientService.forUser(user.id);
   if (!patient) return { error: "No patient record linked to this account." };
 
-  const granteeId = String(formData.get("granteeId") ?? "");
+  const granteeR = field(formData.get("granteeId"), FIELD_LIMITS.short, { label: "Grantee", required: true });
+  if (!granteeR.ok) return { error: granteeR.error };
+  const granteeId = granteeR.value;
   // M2: NaN or non-numeric input must fall back to the default, not clamp
   // into NaN (Math.min(NaN,...) → NaN → 1-day grant via later NaN quirks).
   const rawDays = Number(formData.get("days") ?? 7);
@@ -65,14 +78,17 @@ export async function grantConsentAction(
     Math.max(Number.isFinite(rawDays) ? rawDays : 7, 1),
     365,
   );
-  const purpose = String(formData.get("purpose") ?? "treatment") as
+  const purposeR = field(formData.get("purpose") ?? "treatment", FIELD_LIMITS.short, { label: "Purpose", required: true });
+  if (!purposeR.ok) return { error: purposeR.error };
+  const purpose = purposeR.value as
     | "treatment"
     | "consultation"
     | "emergency"
     | "record_review";
-  const scopes = formData
-    .getAll("scopes")
-    .map(String)
+  const rawScopes = formData.getAll("scopes").map(String);
+  if (rawScopes.some((s) => s.length > FIELD_LIMITS.short))
+    return { error: "One of the selected scopes is too long." };
+  const scopes = rawScopes
     .filter((s): s is ConsentScope =>
       [
         "demographics",
@@ -141,8 +157,9 @@ export async function revokeConsentAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const consentId = String(formData.get("consentId") ?? "");
-  if (!consentId) return { error: "Missing consent." };
+  const consentR = field(formData.get("consentId"), FIELD_LIMITS.short, { label: "Consent", required: true });
+  if (!consentR.ok) return { error: consentR.error };
+  const consentId = consentR.value;
   const patient = await patientService.forUser(user.id);
   if (!patient) return { error: "No patient record linked to this account." };
 
@@ -163,8 +180,9 @@ export async function requestAccessAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const patientId = String(formData.get("patientId") ?? "");
-  if (!patientId) return { error: "Missing patient." };
+  const patientR = field(formData.get("patientId"), FIELD_LIMITS.short, { label: "Patient", required: true });
+  if (!patientR.ok) return { error: patientR.error };
+  const patientId = patientR.value;
   try {
     const practitioner = await getPractitionerForUser(user.id);
     if (!practitioner) return { error: "Practitioner profile missing." };
@@ -211,11 +229,15 @@ export async function raiseDisputeAction(
   const patient = await patientService.forUser(user.id);
   if (!patient) return { error: "No patient record linked to this account." };
 
-  const resourceId = String(formData.get("resourceId") ?? "").trim();
-  const resourceType = String(formData.get("resourceType") ?? "").trim();
-  const reason = String(formData.get("reason") ?? "").trim();
-  if (!resourceId || !resourceType)
-    return { error: "Missing record to flag." };
+  const resourceR = field(formData.get("resourceId"), FIELD_LIMITS.short, { label: "Record", required: true });
+  if (!resourceR.ok) return { error: resourceR.error };
+  const resourceId = resourceR.value;
+  const resourceTypeR = field(formData.get("resourceType"), FIELD_LIMITS.short, { label: "Record type", required: true });
+  if (!resourceTypeR.ok) return { error: resourceTypeR.error };
+  const resourceType = resourceTypeR.value;
+  const reasonR = field(formData.get("reason"), FIELD_LIMITS.long, { label: "Reason", required: true });
+  if (!reasonR.ok) return { error: reasonR.error };
+  const reason = reasonR.value;
   if (reason.length < 5)
     return { error: "Describe what is wrong (at least 5 characters)." };
 
@@ -270,9 +292,12 @@ export async function updateAccountAction(
   formData: FormData,
 ): Promise<FormState> {
   const user = await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
-  if (!name) return { error: "Name is required." };
+  const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Name", required: true });
+  if (!nameR.ok) return { error: nameR.error };
+  const phoneR = optField(formData.get("phone"), FIELD_LIMITS.short, { label: "Phone" });
+  if (!phoneR.ok) return { error: phoneR.error };
+  const name = nameR.value;
+  const phone = phoneR.value ?? "";
   await db
     .update(userTable)
     .set({ name, phone: phone || null, updatedAt: new Date() })

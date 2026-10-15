@@ -6,7 +6,15 @@ import { auth } from "@/server/auth";
 import { portalHomeForRole } from "@/server/session";
 import { rateLimit, LIMITS } from "@/server/modules/security/rate-limit";
 import { safeNextOr } from "@/server/modules/security/redirect";
+import { field, optField, FIELD_LIMITS } from "@/server/modules/security/field";
 import type { User } from "@/server/db/schema";
+
+const PASSWORD_MAX = 512;
+function passwordTooLong(password: string): string | null {
+  if (password.length > PASSWORD_MAX)
+    return `Password is too long (max ${PASSWORD_MAX} characters).`;
+  return null;
+}
 
 export type FormState = { error?: string; ok?: string };
 
@@ -58,9 +66,15 @@ export async function signInAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const emailR = field(formData.get("email"), FIELD_LIMITS.short, { label: "Email" });
+  if (!emailR.ok) return { error: emailR.error };
+  const email = emailR.value.toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "");
+  const pwErr = passwordTooLong(password);
+  if (pwErr) return { error: pwErr };
+  const nextR = optField(formData.get("next"), FIELD_LIMITS.short, { label: "Redirect" });
+  if (!nextR.ok) return { error: nextR.error };
+  const next = nextR.value ?? "";
 
   if (!email || !password) return { error: "Enter your email and password." };
   // Uniform throttle message: throttled vs wrong-password must be
@@ -101,10 +115,18 @@ export async function signUpAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Name" });
+  if (!nameR.ok) return { error: nameR.error };
+  const emailR = field(formData.get("email"), FIELD_LIMITS.short, { label: "Email" });
+  if (!emailR.ok) return { error: emailR.error };
+  const name = nameR.value;
+  const email = emailR.value.toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const role = String(formData.get("role") ?? "patient");
+  const pwErr = passwordTooLong(password);
+  if (pwErr) return { error: pwErr };
+  const roleR = field(formData.get("role") ?? "patient", FIELD_LIMITS.short, { label: "Role" });
+  if (!roleR.ok) return { error: roleR.error };
+  const role = roleR.value;
 
   if (!name || !email) return { error: "Enter your name and email." };
   if (password.length < 8)
@@ -173,7 +195,9 @@ export async function resendVerificationAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const emailR = field(formData.get("email"), FIELD_LIMITS.short, { label: "Email" });
+  if (!emailR.ok) return { error: emailR.error };
+  const email = emailR.value.toLowerCase();
   if (!email) return { error: "Enter your email." };
   // Always succeed publicly (like forgotPasswordAction): the error path used
   // to distinguish "no such account" from "mail sent" — an enumeration oracle.
@@ -195,7 +219,9 @@ export async function forgotPasswordAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const emailR = field(formData.get("email"), FIELD_LIMITS.short, { label: "Email" });
+  if (!emailR.ok) return { error: emailR.error };
+  const email = emailR.value.toLowerCase();
   if (!email) return { error: "Enter your email." };
   try {
     await auth.api.requestPasswordReset({
@@ -213,8 +239,12 @@ export async function resetPasswordAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const token = String(formData.get("token") ?? "").trim();
+  const tokenR = field(formData.get("token"), FIELD_LIMITS.short, { label: "Token" });
+  if (!tokenR.ok) return { error: tokenR.error };
+  const token = tokenR.value;
   const password = String(formData.get("password") ?? "");
+  const pwErr = passwordTooLong(password);
+  if (pwErr) return { error: pwErr };
   if (!token) return { error: "This reset link is missing its token." };
   if (password.length < 8)
     return { error: "Password must be at least 8 characters." };

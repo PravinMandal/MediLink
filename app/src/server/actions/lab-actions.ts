@@ -22,6 +22,7 @@ import {
   patients,
 } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
+import { field, FIELD_LIMITS } from "@/server/modules/security/field";
 import { recordVersions } from "@/server/modules/records/versions";
 import type { FormState } from "./auth-actions";
 
@@ -221,8 +222,9 @@ export async function reviewCandidatesAction(formData: FormData): Promise<
   const denied = await requireLabRole(user);
   if (denied) return { ok: false, error: denied };
 
-  const documentId = String(formData.get("documentId") ?? "");
-  if (!documentId) return { ok: false, error: "Missing document." };
+  const documentR = field(formData.get("documentId"), FIELD_LIMITS.short, { label: "Document", required: true });
+  if (!documentR.ok) return { ok: false, error: documentR.error };
+  const documentId = documentR.value;
 
   const doc = await orgDocument(documentId, user.organizationId!);
   if (!doc || doc.kind !== "lab_report")
@@ -277,8 +279,9 @@ export async function attestDocumentAction(
   if (denied) return { error: denied };
 
   // Exactly one document per attestation — never a list.
-  const documentId = String(formData.get("documentId") ?? "");
-  if (!documentId) return { error: "Missing document." };
+  const documentR = field(formData.get("documentId"), FIELD_LIMITS.short, { label: "Document", required: true });
+  if (!documentR.ok) return { error: documentR.error };
+  const documentId = documentR.value;
   if (String(formData.get("confirm") ?? "") !== "on")
     return {
       error:
@@ -356,8 +359,9 @@ export async function markUnableToVerifyAction(
   const denied = await requireLabRole(user);
   if (denied) return { error: denied };
 
-  const documentId = String(formData.get("documentId") ?? "");
-  if (!documentId) return { error: "Missing document." };
+  const documentR = field(formData.get("documentId"), FIELD_LIMITS.short, { label: "Document", required: true });
+  if (!documentR.ok) return { error: documentR.error };
+  const documentId = documentR.value;
 
   const doc = await orgDocument(documentId, user.organizationId!);
   if (!doc || doc.kind !== "lab_report")

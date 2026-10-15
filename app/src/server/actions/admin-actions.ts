@@ -8,6 +8,7 @@ import {
 } from "@/server/modules/identity/verification";
 import { emergency } from "@/server/modules/emergency/service";
 import { audit } from "@/server/modules/audit/service";
+import { field, optField, FIELD_LIMITS } from "@/server/modules/security/field";
 import type { FormState } from "./auth-actions";
 
 async function requireAdmin() {
@@ -22,11 +23,15 @@ export async function reviewPractitionerAction(
 ): Promise<FormState> {
   try {
     const admin = await requireAdmin();
+    const practitionerR = field(formData.get("practitionerId"), FIELD_LIMITS.short, { label: "Practitioner", required: true });
+    if (!practitionerR.ok) return { error: practitionerR.error };
+    const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+    if (!notesR.ok) return { error: notesR.error };
     await reviewPractitionerVerification({
       reviewerId: admin.id,
-      practitionerId: String(formData.get("practitionerId") ?? ""),
+      practitionerId: practitionerR.value,
       approve: String(formData.get("approve") ?? "") === "1",
-      notes: String(formData.get("notes") ?? "") || undefined,
+      notes: notesR.value,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
@@ -42,11 +47,15 @@ export async function reviewOrganizationAction(
 ): Promise<FormState> {
   try {
     const admin = await requireAdmin();
+    const orgR = field(formData.get("organizationId"), FIELD_LIMITS.short, { label: "Organization", required: true });
+    if (!orgR.ok) return { error: orgR.error };
+    const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+    if (!notesR.ok) return { error: notesR.error };
     await reviewOrganizationVerification({
       reviewerId: admin.id,
-      organizationId: String(formData.get("organizationId") ?? ""),
+      organizationId: orgR.value,
       approve: String(formData.get("approve") ?? "") === "1",
-      notes: String(formData.get("notes") ?? "") || undefined,
+      notes: notesR.value,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
@@ -62,11 +71,17 @@ export async function reviewEmergencyAction(
 ): Promise<FormState> {
   try {
     const admin = await requireAdmin();
+    const eventR = field(formData.get("eventId"), FIELD_LIMITS.short, { label: "Event", required: true });
+    if (!eventR.ok) return { error: eventR.error };
+    const statusR = field(formData.get("status") ?? "reviewed", FIELD_LIMITS.short, { label: "Status" });
+    if (!statusR.ok) return { error: statusR.error };
+    const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+    if (!notesR.ok) return { error: notesR.error };
     await emergency.review({
       reviewerId: admin.id,
-      eventId: String(formData.get("eventId") ?? ""),
-      status: String(formData.get("status") ?? "reviewed") as "reviewed" | "flagged",
-      notes: String(formData.get("notes") ?? "") || undefined,
+      eventId: eventR.value,
+      status: statusR.value as "reviewed" | "flagged",
+      notes: notesR.value,
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
@@ -103,11 +118,15 @@ export async function setUserRoleAction(
 ): Promise<FormState> {
   try {
     const admin = await requireAdmin();
-    const targetUserId = String(formData.get("userId") ?? "").trim();
-    const role = String(formData.get("role") ?? "").trim();
-    const reason = String(formData.get("reason") ?? "").trim();
-    if (!targetUserId) return { error: "Choose a user." };
-    if (!reason) return { error: "A reason is required for role grants." };
+    const targetR = field(formData.get("userId"), FIELD_LIMITS.short, { label: "User", required: true });
+    if (!targetR.ok) return { error: targetR.error };
+    const roleR = field(formData.get("role"), FIELD_LIMITS.short, { label: "Role", required: true });
+    if (!roleR.ok) return { error: roleR.error };
+    const reasonR = field(formData.get("reason"), FIELD_LIMITS.long, { label: "Reason", required: true });
+    if (!reasonR.ok) return { error: reasonR.error };
+    const targetUserId = targetR.value;
+    const role = roleR.value;
+    const reason = reasonR.value;
 
     const { grantUserRole } = await import("@/server/modules/admin/roles");
     await grantUserRole({
