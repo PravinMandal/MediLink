@@ -48,7 +48,8 @@ async function applyLocalMigrations(client: import("@electric-sql/pglite").PGlit
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
   for (const file of files) {
     const applied = await client.query<{ name: string }>(
-      `SELECT name FROM _medilink_migrations WHERE name = '${file}'`,
+      `SELECT name FROM _medilink_migrations WHERE name = $1`,
+      [file],
     );
     if (applied.rows.length) continue;
     const statements = fs
@@ -57,7 +58,7 @@ async function applyLocalMigrations(client: import("@electric-sql/pglite").PGlit
       .map((s) => s.trim())
       .filter(Boolean);
     for (const stmt of statements) await client.exec(stmt);
-    await client.exec(`INSERT INTO _medilink_migrations (name) VALUES ('${file}');`);
+    await client.query(`INSERT INTO _medilink_migrations (name) VALUES ($1);`, [file]);
   }
   await client.exec(
     `CREATE INDEX IF NOT EXISTS chunk_tsv_idx ON search_chunks USING gin (to_tsvector('english', content));`,
@@ -102,6 +103,12 @@ async function createDb() {
     return drizzleNodePostgres(
       new pg.Pool({
         connectionString: databaseUrl,
+        // Timeouts: a hung query must never hold a pooled connection forever
+        // (serverless burst → Supavisor exhaustion). Statement 25s < Vercel's
+        // 60s function cap; idle/connection 10s each.
+        statement_timeout: 25_000,
+        idleTimeoutMillis: 10_000,
+        connectionTimeoutMillis: 10_000,
         ssl: isLocal ? undefined : { rejectUnauthorized: false },
         // rejectUnauthorized:false is acceptable: Supabase's pooler presents a
         // cert chain our Node build doesn't trust; the MITM exposure is

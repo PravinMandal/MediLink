@@ -23,8 +23,8 @@ async function getRawClient() {
       exec: async (sqlText: string) => {
         await client.query(sqlText);
       },
-      query: async <T = Record<string, unknown>>(sqlText: string): Promise<T[]> => {
-        const res = await client.query(sqlText);
+      query: async <T = Record<string, unknown>>(sqlText: string, params?: unknown[]): Promise<T[]> => {
+        const res = await client.query(sqlText, params);
         return res.rows as T[];
       },
       close: () => client.end(),
@@ -40,8 +40,8 @@ async function getRawClient() {
     exec: async (sqlText: string) => {
       await client.exec(sqlText);
     },
-    query: async <T = Record<string, unknown>>(sqlText: string): Promise<T[]> => {
-      const res = await client.query<T>(sqlText);
+    query: async <T = Record<string, unknown>>(sqlText: string, params?: unknown[]): Promise<T[]> => {
+      const res = await client.query<T>(sqlText, params);
       return res.rows as T[];
     },
     close: () => client.close(),
@@ -83,7 +83,8 @@ async function main() {
 
   for (const file of files) {
     const applied = await client.query<{ name: string }>(
-      `SELECT name FROM _medilink_migrations WHERE name = '${file}'`,
+      `SELECT name FROM _medilink_migrations WHERE name = $1`,
+      [file],
     );
     if (applied.length > 0) {
       console.log(`  ✓ ${file} (already applied)`);
@@ -98,8 +99,9 @@ async function main() {
     for (const stmt of statements) {
       await client.exec(stmt);
     }
-    await client.exec(
-      `INSERT INTO _medilink_migrations (name) VALUES ('${file}');`,
+    await client.query(
+      `INSERT INTO _medilink_migrations (name) VALUES ($1);`,
+      [file],
     );
     console.log(`  ✓ ${file} (${statements.length} statements)`);
   }
