@@ -9,22 +9,22 @@ const BEAT_COPY = [
   {
     eyebrow: "Beat 01 · Arrive",
     title: "Your lab report arrives.",
-    body: "Pulled from the hospital, into your vault — byte-for-byte, as the instrument printed it.",
+    body: "Pulled from the hospital into your vault — byte-for-byte, exactly as the instrument printed it.",
   },
   {
     eyebrow: "Beat 02 · Sealed",
     title: "Sealed. Only you hold the key.",
-    body: "Hashed with sha-256. One changed byte breaks the seal; the original never moves.",
+    body: "Hashed with sha-256 and linked into the chain. One changed byte breaks the seal; the original never moves.",
   },
   {
     eyebrow: "Beat 03 · Gated",
     title: "Gated. Nothing opens without your tap.",
-    body: "A clinician waits outside the glass until you grant — narrowly, with an expiry.",
+    body: "A clinician waits outside the chain until you grant — narrowly scoped, with an expiry. Try it: tap grant and watch the links snap shut.",
   },
   {
     eyebrow: "Beat 04 · Cited",
     title: "Cited. Every access leaves a receipt.",
-    body: "Each summary sentence resolves to a sealed record. A claim without a source is dropped.",
+    body: "Each summary sentence resolves to a sealed record. A claim without a source is dropped — orbit the chip and see.",
   },
 ] as const;
 
