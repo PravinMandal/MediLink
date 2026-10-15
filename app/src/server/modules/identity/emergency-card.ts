@@ -16,7 +16,7 @@
  * can migrate to hash-only verification later without re-issuing cards.
  */
 import { createHash } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { emergencyCardTokens, patients } from "@/server/db/schema";
 import { audit } from "@/server/modules/audit/service";
@@ -125,7 +125,6 @@ export const emergencyCard = {
       .select({
         id: emergencyCardTokens.id,
         patientId: emergencyCardTokens.patientId,
-        useCount: emergencyCardTokens.useCount,
       })
       .from(emergencyCardTokens)
       .where(
@@ -144,9 +143,13 @@ export const emergencyCard = {
       });
       return null;
     }
+    // Atomic increment: read-then-write lost concurrent scans.
     await db
       .update(emergencyCardTokens)
-      .set({ lastUsedAt: new Date(), useCount: row.useCount + 1 })
+      .set({
+        lastUsedAt: new Date(),
+        useCount: sql`${emergencyCardTokens.useCount} + 1`,
+      })
       .where(eq(emergencyCardTokens.id, row.id));
     return { patientId: row.patientId };
   },

@@ -298,10 +298,9 @@ export function VaultAct() {
               key={b.eyebrow}
               ref={(el) => { captionRefs.current[i] = el; }}
               className="absolute inset-x-6 top-1/2 -translate-y-1/2 transition-opacity duration-300 sm:inset-x-12"
-              style={{ opacity: i === 0 ? 1 : 0 }}
+              style={{ opacity: i === 0 ? 1 : 0, visibility: i === 0 ? "visible" : "hidden" }}
               aria-hidden={i !== 0}
-              // @ts-expect-error inert is valid HTML but missing from React 19 types
-              inert={i !== 0 ? "" : undefined}
+              {...(i !== 0 ? { inert: true } : {})}
             >
               <div className="max-w-sm">
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#6fa8ff]">{b.eyebrow}</p>

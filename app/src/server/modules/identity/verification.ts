@@ -389,28 +389,12 @@ export async function listVerifiedOrganizations() {
     .orderBy(organizations.name);
 }
 
-export async function joinOrganization(userId: string, organizationId: string) {
-  // Both rows must agree on the clinician's org — a crash between them
-  // left user and practitioner rows pointing at different organizations,
-  // so consent reads and facility queues disagreed on membership.
-  await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({ organizationId, updatedAt: new Date() })
-      .where(eq(users.id, userId));
-    const [p] = await tx
-      .select()
-      .from(practitioners)
-      .where(eq(practitioners.userId, userId));
-    if (p) {
-      await tx
-        .update(practitioners)
-        .set({ organizationId })
-        .where(eq(practitioners.id, p.id));
-    }
-  });
-}
-
+/**
+ * Self-asserted org join was REMOVED (2026-10-15): it let any doctor claim
+ * membership of any org by UUID with no invite, approval, or audit. Org
+ * affiliation is now granted only through the admin verification flow —
+ * reintroduce as an invite-token flow if self-join is ever needed.
+ */
 export async function requireVerifiedPractitioner(userId: string) {
   const p = await getPractitionerForUser(userId);
   if (!p || p.verificationStatus !== "verified") {

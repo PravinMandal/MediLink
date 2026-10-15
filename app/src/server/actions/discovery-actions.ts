@@ -32,6 +32,13 @@ export async function lookupPatientAction(identifier: string): Promise<LookupRes
   if (user.role !== "doctor") {
     return { status: "invalid", message: "Only clinician accounts look up patients." };
   }
+  // Unverified accounts get no discovery oracle: self-registered doctors
+  // must not brute-force Patient IDs / ABHA numbers before verification.
+  try {
+    await requireVerifiedPractitioner(user.id);
+  } catch {
+    return { status: "invalid", message: "Only clinician accounts look up patients." };
+  }
   const result = await discovery.lookupIdentifier({
     actorId: user.id,
     identifier,
@@ -89,6 +96,11 @@ export async function redeemHandoffAction(
 ): Promise<{ ok: true; patientId: string } | { ok: false; message: string }> {
   const user = await requireUser();
   if (user.role !== "doctor") {
+    return { ok: false, message: "Only clinician accounts redeem sharing codes." };
+  }
+  try {
+    await requireVerifiedPractitioner(user.id);
+  } catch {
     return { ok: false, message: "Only clinician accounts redeem sharing codes." };
   }
   return discovery.redeemHandoff({ clinicianUserId: user.id, code });
