@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireUser, type SessionUser } from "@/server/session";
+import { field, optField, FIELD_LIMITS } from "@/server/modules/security/field";
 import { access, AccessDeniedError, EMERGENCY_SCOPES, scopeForResource } from "@/server/modules/access/guard";
 import {
   submitPractitionerVerification,
@@ -93,43 +94,53 @@ export async function addClinicalRecordAction(
 
     switch (kind) {
       case "condition": {
-        const name = String(formData.get("name") ?? "").trim();
-        if (!name) return { error: "Condition name is required." };
+        const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Condition name", required: true });
+        if (!nameR.ok) return { error: nameR.error };
+        const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
+        if (!notesR.ok) return { error: notesR.error };
         await records.addCondition(
           patientId,
           {
-            name,
+            name: nameR.value,
             status: (String(formData.get("status") ?? "active") as "active" | "chronic" | "resolved"),
             onsetDate: String(formData.get("onsetDate") ?? "") || undefined,
-            notes: String(formData.get("notes") ?? "") || undefined,
+            notes: notesR.value,
           },
           prov,
         );
         break;
       }
       case "allergy": {
-        const substance = String(formData.get("substance") ?? "").trim();
-        if (!substance) return { error: "Allergy substance is required." };
+        const substanceR = field(formData.get("substance"), FIELD_LIMITS.short, { label: "Allergy substance", required: true });
+        if (!substanceR.ok) return { error: substanceR.error };
+        const criticalityR = optField(formData.get("criticality"), FIELD_LIMITS.medium, { label: "Criticality" });
+        if (!criticalityR.ok) return { error: criticalityR.error };
+        const reactionR = optField(formData.get("reaction"), FIELD_LIMITS.medium, { label: "Reaction" });
+        if (!reactionR.ok) return { error: reactionR.error };
         await records.addAllergy(
           patientId,
           {
-            substance,
-            criticality: String(formData.get("criticality") ?? "") || undefined,
-            reaction: String(formData.get("reaction") ?? "") || undefined,
+            substance: substanceR.value,
+            criticality: criticalityR.value,
+            reaction: reactionR.value,
           },
           prov,
         );
         break;
       }
       case "medication": {
-        const medication = String(formData.get("medication") ?? "").trim();
-        if (!medication) return { error: "Medication name is required." };
+        const medicationR = field(formData.get("medication"), FIELD_LIMITS.short, { label: "Medication name", required: true });
+        if (!medicationR.ok) return { error: medicationR.error };
+        const doseR = optField(formData.get("dose"), FIELD_LIMITS.medium, { label: "Dose" });
+        if (!doseR.ok) return { error: doseR.error };
+        const frequencyR = optField(formData.get("frequency"), FIELD_LIMITS.medium, { label: "Frequency" });
+        if (!frequencyR.ok) return { error: frequencyR.error };
         await records.addMedication(
           patientId,
           {
-            medication,
-            dose: String(formData.get("dose") ?? "") || undefined,
-            frequency: String(formData.get("frequency") ?? "") || undefined,
+            medication: medicationR.value,
+            dose: doseR.value,
+            frequency: frequencyR.value,
             startDate: String(formData.get("startDate") ?? "") || undefined,
             prescriberId: practitioner.id,
           },
@@ -138,18 +149,24 @@ export async function addClinicalRecordAction(
         break;
       }
       case "observation": {
-        const name = String(formData.get("name") ?? "").trim();
-        const rawValue = String(formData.get("value") ?? "").trim();
-        if (!name) return { error: "Observation name is required." };
+        const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Observation name", required: true });
+        if (!nameR.ok) return { error: nameR.error };
+        const rawValueR = optField(formData.get("value"), FIELD_LIMITS.medium, { label: "Value" });
+        if (!rawValueR.ok) return { error: rawValueR.error };
+        const rawValue = rawValueR.value ?? "";
         const numeric = rawValue ? Number(rawValue.replace(/,/g, "")) : null;
+        const panelR = optField(formData.get("panel"), FIELD_LIMITS.medium, { label: "Panel" });
+        if (!panelR.ok) return { error: panelR.error };
+        const unitR = optField(formData.get("unit"), FIELD_LIMITS.medium, { label: "Unit" });
+        if (!unitR.ok) return { error: unitR.error };
         await records.addObservation(
           patientId,
           {
-            name,
-            panel: String(formData.get("panel") ?? "") || undefined,
+            name: nameR.value,
+            panel: panelR.value,
             value: numeric != null && Number.isFinite(numeric) ? numeric : null,
             valueString: numeric == null ? rawValue || null : null,
-            unit: String(formData.get("unit") ?? "") || undefined,
+            unit: unitR.value,
             effectiveDate: String(formData.get("effectiveDate") ?? "") || undefined,
           },
           prov,
@@ -157,14 +174,16 @@ export async function addClinicalRecordAction(
         break;
       }
       case "procedure": {
-        const name = String(formData.get("name") ?? "").trim();
-        if (!name) return { error: "Procedure name is required." };
+        const nameR = field(formData.get("name"), FIELD_LIMITS.short, { label: "Procedure name", required: true });
+        if (!nameR.ok) return { error: nameR.error };
+        const outcomeR = optField(formData.get("outcome"), FIELD_LIMITS.long, { label: "Outcome" });
+        if (!outcomeR.ok) return { error: outcomeR.error };
         await records.addProcedure(
           patientId,
           {
-            name,
+            name: nameR.value,
             performedDate: String(formData.get("performedDate") ?? "") || undefined,
-            outcome: String(formData.get("outcome") ?? "") || undefined,
+            outcome: outcomeR.value,
           },
           prov,
         );
