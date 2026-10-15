@@ -337,8 +337,13 @@ export function VaultAct() {
               captionRefs.current.forEach((el, i) => {
                 if (!el) return;
                 const on = i === beat;
+                // Opacity alone is not enough: captions render with
+                // visibility:hidden + inert, and neither was ever toggled —
+                // so only Beat 01 ever painted (then an empty stage).
                 el.style.opacity = on ? "1" : "0";
+                el.style.visibility = on ? "visible" : "hidden";
                 el.setAttribute("aria-hidden", String(!on));
+                el.toggleAttribute("inert", !on);
               });
             },
           },
