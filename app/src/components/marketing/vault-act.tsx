@@ -36,119 +36,210 @@ function seg(s: number, from: number, to: number): number {
 
 export type VaultProgress = { current: number; granted: boolean };
 
-/** Glass vault capsule + report card, driven by a single scrubbed value s: 0→4. */
+/**
+ * Hash-chain helix + report card, driven by a single scrubbed value s: 0→4.
+ * (Overhaul round 9 rebuild: the old glass-capsule primitives are replaced
+ * by the product's own metaphor — sealed record blocks linked into a
+ * glowing chain. Same beats, same perf tiers, zero new dependencies.)
+ *
+ * Beat choreography:
+ *  0→1 Arrive: scattered paper slips converge from the fog into one card.
+ *  1→2 Sealed: chain links ignite one-by-one around the card (sha-256 seal).
+ *  2→3 Gated: links part slightly until the grant tap snaps them shut.
+ *  3→4 Cited: a citation chip detaches and orbits, trailing a receipt line.
+ */
+const LINKS = 14;
+const HELIX_R = 1.35;
+const HELIX_H = 3.6;
+
 function VaultScene({ progress, coarse }: { progress: React.MutableRefObject<VaultProgress>; coarse: boolean }) {
   const group = useRef<THREE.Group>(null);
-  const halves = useRef<Array<THREE.Group | null>>([]);
-  const ring = useRef<THREE.Mesh>(null);
+  const slips = useRef<Array<THREE.Group | null>>([]);
+  const links = useRef<Array<THREE.Mesh | null>>([]);
+  const seam = useRef<THREE.Mesh>(null);
   const chip = useRef<THREE.Group>(null);
+  const heroTilt = useRef<THREE.Group>(null);
 
   const mats = useMemo(
     () => ({
-      // Physical + clearcoat roughly doubles fragment cost vs standard for
-      // a faint blue shell — mobile gets MeshStandardMaterial instead.
-      glass: coarse
-        ? new THREE.MeshStandardMaterial({
-            color: "#3d6fd1",
-            transparent: true,
-            opacity: 0.32,
-            roughness: 0.25,
-            metalness: 0.15,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          })
-        : new THREE.MeshPhysicalMaterial({
-            color: "#3d6fd1",
-            transparent: true,
-            opacity: 0.28,
-            roughness: 0.12,
-            metalness: 0.1,
-            clearcoat: 1,
-            clearcoatRoughness: 0.15,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          }),
-      card: new THREE.MeshStandardMaterial({ color: "#dbe7ff", roughness: 0.5 }),
-      cardEdge: new THREE.MeshStandardMaterial({ color: "#2e6fe8", roughness: 0.4 }),
-      seal: new THREE.MeshStandardMaterial({
+      slip: new THREE.MeshStandardMaterial({
+        color: "#dbe7ff",
+        roughness: 0.55,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+      }),
+      heroCard: new THREE.MeshStandardMaterial({ color: "#e8f0ff", roughness: 0.45 }),
+      heroEdge: new THREE.MeshStandardMaterial({ color: "#2e6fe8", roughness: 0.4 }),
+      linkDim: new THREE.MeshStandardMaterial({
+        color: "#26355c",
+        roughness: 0.4,
+        metalness: 0.5,
+      }),
+      linkLit: new THREE.MeshStandardMaterial({
         color: "#4d8dff",
         emissive: "#2e6fe8",
-        emissiveIntensity: 1.4,
+        emissiveIntensity: 1.8,
+        roughness: 0.3,
+        metalness: 0.3,
+      }),
+      seam: new THREE.MeshStandardMaterial({
+        color: "#4d8dff",
+        emissive: "#2e6fe8",
+        emissiveIntensity: 2.2,
         roughness: 0.3,
       }),
-      lock: new THREE.MeshStandardMaterial({
-        color: "#8fb4ff",
-        emissive: "#1a56c4",
-        emissiveIntensity: 0.7,
-        roughness: 0.25,
-        metalness: 0.6,
-      }),
     }),
-    [coarse],
+    [],
   );
 
   useEffect(() => () => Object.values(mats).forEach((m) => m.dispose()), [mats]);
 
+  // Deterministic scatter directions for the paper slips (no per-frame alloc).
+  const scatter = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const a = (i / 7) * Math.PI * 2 + 0.4;
+        return {
+          x: Math.cos(a) * (3.2 + (i % 3) * 0.5),
+          y: 1.6 - i * 0.55,
+          z: -1.5 - (i % 2) * 1.2,
+          rx: (i * 0.7) % 1.2,
+          rz: (i * 1.3) % 1.0,
+        };
+      }),
+    [],
+  );
+
+  // Helix slot for link i (0 = bottom).
+  const slot = (i: number, spread: number, t: number) => {
+    const turn = (i / (LINKS - 1)) * Math.PI * 1.6 - Math.PI * 0.3 + t * 0.12;
+    const r = HELIX_R + spread * 0.55;
+    return {
+      x: Math.cos(turn) * r,
+      y: -HELIX_H / 2 + (i / (LINKS - 1)) * HELIX_H,
+      z: Math.sin(turn) * r,
+      ry: -turn,
+    };
+  };
+
   useFrame((state) => {
     const s = progress.current.current; // 0 → 4
     const granted = progress.current.granted;
+    const t = state.clock.elapsedTime;
     const g = group.current;
     if (!g) return;
-    g.rotation.y = s * 0.55 + Math.sin(state.clock.elapsedTime * 0.3) * 0.06;
-    g.position.y = Math.sin(state.clock.elapsedTime * 0.7) * 0.05;
+    g.rotation.y = s * 0.42 + Math.sin(t * 0.25) * 0.05;
+    g.position.y = Math.sin(t * 0.6) * 0.05;
+    // Keep the hero card facing the camera while the chain orbits it.
+    if (heroTilt.current) heroTilt.current.rotation.y = -g.rotation.y;
 
-    const close = seg(s, 0.7, 1.6);
-    const split = seg(s, 2.1, 2.8) * (granted ? 0.25 : 1);
-    halves.current.forEach((half, i) => {
-      if (!half) return;
-      half.position.x = (i === 0 ? -1 : 1) * THREE.MathUtils.lerp(1.6, 0.62, close);
-      half.position.y = (i === 0 ? 1 : -1) * split * 0.7;
-      half.rotation.z = (i === 0 ? 1 : -1) * split * 0.28;
-    });
-    if (ring.current) {
-      const sealOn = seg(s, 1.2, 2);
-      const mat = ring.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = 0.2 + sealOn * (1.6 + Math.sin(state.clock.elapsedTime * 3) * 0.5);
-      ring.current.scale.setScalar(0.6 + sealOn * 0.4);
-    }
-    if (chip.current) {
-      const out = seg(s, 3.1, 3.8);
-      chip.current.position.set(
-        THREE.MathUtils.lerp(0, 1.9, out),
-        THREE.MathUtils.lerp(0, 0.6, out),
-        THREE.MathUtils.lerp(0, 0.9, out),
+    // Beat 1: slips fly in from the fog and stack into the hero card.
+    const gather = seg(s, 0.05, 0.95);
+    const ge = 1 - Math.pow(1 - gather, 3); // easeOutCubic
+    slips.current.forEach((slip, i) => {
+      if (!slip) return;
+      const d = scatter[i % scatter.length]!;
+      const local = Math.min(1, Math.max(0, ge * 1.25 - (i % scatter.length) * 0.035));
+      const le = 1 - Math.pow(1 - local, 2);
+      slip.position.set(
+        THREE.MathUtils.lerp(d.x, (i % 3 - 1) * 0.12, le),
+        THREE.MathUtils.lerp(d.y, 0.1 + (i % 4) * 0.02, le),
+        THREE.MathUtils.lerp(d.z, 0.1, le),
       );
-      chip.current.scale.setScalar(0.3 + out * 0.7);
+      slip.rotation.set(
+        THREE.MathUtils.lerp(d.rx, 0, le),
+        THREE.MathUtils.lerp(0.6, 0, le),
+        THREE.MathUtils.lerp(d.rz, 0, le),
+      );
+      const m = slip.children[0] as THREE.Mesh | undefined;
+      const mm = m?.material as THREE.MeshStandardMaterial | undefined;
+      if (mm) mm.opacity = 0.92 * (1 - le * 0.92);
+    });
+
+    // Beat 2: links ignite bottom-up (the seal propagating down the chain).
+    const seal = seg(s, 1.05, 2.0);
+    links.current.forEach((link, i) => {
+      if (!link) return;
+      const on = THREE.MathUtils.clamp(seal * (LINKS + 2) - i, 0, 1);
+      link.material = on > 0.5 ? mats.linkLit : mats.linkDim;
+      const p = slot(i, 0, s);
+      link.position.set(p.x, p.y, p.z);
+      link.rotation.y = p.ry;
+      const pulse = on > 0.5 ? 1 + Math.sin(t * 3 - i * 0.55) * 0.06 : 1;
+      link.scale.setScalar(pulse);
+    });
+    if (seam.current) {
+      const sm = seam.current.material as THREE.MeshStandardMaterial;
+      sm.emissiveIntensity = 0.4 + seal * (2.0 + Math.sin(t * 2.4) * 0.5);
+      seam.current.scale.set(seal, 1, seal);
     }
+
+    // Beat 3: links breathe apart until granted, then snap shut.
+    const gate = seg(s, 2.1, 2.9);
+    const spread = gate * (granted ? 0.12 : 1);
+    links.current.forEach((link, i) => {
+      if (!link) return;
+      const p = slot(i, spread, s);
+      link.position.x = THREE.MathUtils.lerp(link.position.x, p.x, 0.2);
+      link.position.z = THREE.MathUtils.lerp(link.position.z, p.z, 0.2);
+    });
+
+    // Beat 4: citation chip detaches and orbits, trailing its receipt.
+    if (chip.current) {
+      const out = seg(s, 3.05, 3.8);
+      const ang = out * Math.PI * 1.1 - 0.4;
+      const r = THREE.MathUtils.lerp(0, 2.5, out);
+      chip.current.position.set(Math.cos(ang) * r, 0.9 + out * 0.5, Math.sin(ang) * r);
+      chip.current.rotation.y = -ang + Math.PI / 2;
+      chip.current.scale.setScalar(0.25 + out * 0.75);
+    }
+    void coarse;
   });
 
   return (
     <group ref={group}>
-      <Float speed={1.4} rotationIntensity={0.25} floatIntensity={0.5}>
-        <RoundedBox args={[1.5, 2.1, 0.12]} radius={0.06} material={mats.card} />
-        {[-0.6, -0.35, -0.1, 0.15].map((y, i) => (
-          <mesh key={i} position={[-0.25 + (i % 2) * 0.12, y, 0.065]} material={mats.cardEdge}>
-            <boxGeometry args={[i % 2 ? 0.7 : 1.0, 0.07, 0.01]} />
-          </mesh>
-        ))}
-      </Float>
-
-      {[-1, 1].map((side, i) => (
-        <group key={side} ref={(el) => { halves.current[i] = el; }}>
-          <mesh material={mats.glass}>
-            <cylinderGeometry args={[1.45, 1.45, 2.9, 24, 1, true, side > 0 ? 0 : Math.PI, Math.PI]} />
-          </mesh>
-          <mesh material={mats.lock} position={[0, 1.15, 1.1]}>
-            <sphereGeometry args={[0.09, 16, 16]} />
+      {/* Scattered paper slips (beat 1) — instanced look, individual meshes
+          for per-slip flight paths; 7 draw calls, merged on arrival. */}
+      {Array.from({ length: 7 }, (_, i) => (
+        <group key={i} ref={(el) => { slips.current[i] = el; }}>
+          <mesh material={mats.slip}>
+            <planeGeometry args={[1.1, 1.5]} />
           </mesh>
         </group>
       ))}
 
-      <mesh ref={ring} material={mats.seal} rotation={[Math.PI / 2, 0, 0]} position={[0, -1.55, 0]}>
-        <torusGeometry args={[1.0, 0.05, 12, 48]} />
+      {/* Hero card: the arrived report (counter-rotated to face camera) */}
+      <Float speed={1.4} rotationIntensity={0.2} floatIntensity={0.4}>
+        <group ref={heroTilt}>
+          <RoundedBox args={[1.5, 2.1, 0.12]} radius={0.06} material={mats.heroCard} />
+          {[-0.6, -0.35, -0.1, 0.15].map((y, i) => (
+            <mesh key={i} position={[-0.25 + (i % 2) * 0.12, y, 0.065]} material={mats.heroEdge}>
+              <boxGeometry args={[i % 2 ? 0.7 : 1.0, 0.07, 0.01]} />
+            </mesh>
+          ))}
+        </group>
+      </Float>
+
+      {/* Hash-chain helix: 14 torus links around the card */}
+      {Array.from({ length: LINKS }, (_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => { links.current[i] = el; }}
+          material={mats.linkDim}
+          rotation={[Math.PI / 2.3, 0, 0]}
+        >
+          <torusGeometry args={[0.34, 0.075, 10, 28]} />
+        </mesh>
+      ))}
+
+      {/* Seal seam: a glowing band that rises with the seal */}
+      <mesh ref={seam} material={mats.seam} position={[0, -1.35, 0]}>
+        <cylinderGeometry args={[1.15, 1.15, 0.05, 40, 1, true]} />
       </mesh>
 
-      <group ref={chip} scale={0.3}>
+      {/* Citation chip (beat 4) */}
+      <group ref={chip} scale={0.25}>
         <RoundedBox args={[0.9, 0.5, 0.08]} radius={0.04}>
           <meshStandardMaterial color="#0d1424" roughness={0.35} metalness={0.4} />
         </RoundedBox>
