@@ -71,15 +71,19 @@ function VaultScene({ progress, coarse }: { progress: React.MutableRefObject<Vau
       }),
       heroCard: new THREE.MeshStandardMaterial({ color: "#e8f0ff", roughness: 0.45 }),
       heroEdge: new THREE.MeshStandardMaterial({ color: "#2e6fe8", roughness: 0.4 }),
+      // Unlit links must still read as steel on the near-black stage —
+      // the old #26355c with no emissive rendered as pure black holes.
       linkDim: new THREE.MeshStandardMaterial({
-        color: "#26355c",
-        roughness: 0.4,
-        metalness: 0.5,
+        color: "#5b7bc0",
+        emissive: "#1b2c52",
+        emissiveIntensity: 0.55,
+        roughness: 0.35,
+        metalness: 0.6,
       }),
       linkLit: new THREE.MeshStandardMaterial({
         color: "#4d8dff",
         emissive: "#2e6fe8",
-        emissiveIntensity: 1.8,
+        emissiveIntensity: 2.4,
         roughness: 0.3,
         metalness: 0.3,
       }),
@@ -272,18 +276,26 @@ export function VaultAct() {
   );
   const [grant, setGrant] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [inView, setInView] = useState(false);
+  // One-way latch: once the GL context is created it stays mounted for the
+  // life of the page. The old code unmounted <Canvas> when the section left
+  // the viewport, destroying the context — scrolling back up remounted into
+  // a blank/black canvas. Never unmount; the cost of one idle scene is nil
+  // next to a context loss.
+  const [mounted, setMounted] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
-  // IO-gate the WebGL mount: the scene lives below the fold, so don't
-  // create the GL context (or run the frameloop) until it scrolls near.
+  // Mount the WebGL scene early (a full viewport before it scrolls in) so
+  // the three.js chunk + first frame are ready by arrival — the old 400px
+  // margin meant users stared at an empty stage while the GPU warmed up.
   useEffect(() => {
     if (reduced || failed) return;
     const el = canvasWrapRef.current;
     if (!el) return;
     const io = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { rootMargin: "400px 0px" },
+      ([entry]) => {
+        if (entry.isIntersecting) setMounted(true);
+      },
+      { rootMargin: "1200px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -362,7 +374,7 @@ export function VaultAct() {
     <section ref={sectionRef} aria-label="How a record travels in 3D" className="landing-dark relative h-[400vh]">
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
         <div ref={canvasWrapRef} className="absolute inset-0" aria-hidden="true">
-          {inView ? (
+          {mounted ? (
           <Canvas
             dpr={coarse ? 1 : [1, 1.5]}
             frameloop="always"
@@ -372,9 +384,14 @@ export function VaultAct() {
             onError={() => setFailed(true)}
           >
             <color attach="background" args={["#060a14"]} />
-            <ambientLight intensity={0.5} />
-            <directionalLight position={[4, 6, 6]} intensity={1.6} color="#cfe1ff" />
-            <directionalLight position={[-5, 2, -3]} intensity={0.6} color="#2e6fe8" />
+            {/* Lighting rig: unlit geometry must never go black. Hemisphere
+                wash lifts shadow sides, the key stays cool-white, and a warm
+                rim from behind separates dark links from the dark stage. */}
+            <hemisphereLight args={["#bcd0ff", "#0a1020", 0.9]} />
+            <ambientLight intensity={0.35} />
+            <directionalLight position={[4, 6, 6]} intensity={1.8} color="#d8e6ff" />
+            <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#5b8cff" />
+            <directionalLight position={[0, -4, 2]} intensity={0.5} color="#ffb37a" />
             <Stars radius={60} depth={30} count={coarse ? 500 : 1200} factor={3} fade speed={coarse ? 0 : 0.6} />
             <Suspense fallback={null}>
               <VaultScene progress={progress} coarse={coarse} />
