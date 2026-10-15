@@ -8,6 +8,7 @@ import {
 } from "@/server/actions/patient-actions";
 import { Field, Input, Select, Badge, FormErrorSummary } from "./ui";
 import { SubmitButton, useFocusFirstError } from "./interactive";
+import { CONSENT_SCOPES } from "./consent-scopes";
 
 export type GranteeOption = {
   id: string;
@@ -15,16 +16,7 @@ export type GranteeOption = {
   sub: string;
 };
 
-const SCOPES: Array<{ value: string; label: string; default?: boolean }> = [
-  { value: "demographics", label: "Demographics & identity", default: true },
-  { value: "conditions", label: "Conditions & diagnoses", default: true },
-  { value: "allergies", label: "Allergies", default: true },
-  { value: "medications", label: "Medications & prescriptions", default: true },
-  { value: "lab_results", label: "Lab results", default: true },
-  { value: "imaging", label: "Imaging & radiology" },
-  { value: "procedures", label: "Procedures & surgeries", default: true },
-  { value: "documents", label: "Source documents" },
-];
+const SCOPES = CONSENT_SCOPES;
 
 export function GrantConsentForm({
   practitioners,

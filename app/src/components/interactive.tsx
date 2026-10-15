@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { cn, formatDate, TRUST_LABEL, KIND_LABEL } from "@/lib/utils";
 import { buttonClass, Button } from "./ui";
+import { useFocusTrap } from "./use-focus-trap";
 
 /* ------------------------------------------------------------------ */
 /* useFocusFirstError — focus summary or first invalid field on error  */
@@ -134,39 +135,7 @@ export function SourceDrawer({
   extra?: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (openIndex === null) return;
-    const opener = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !ref.current) return;
-      // Focus trap: cycle Tab within the drawer
-      const focusables = ref.current.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-      );
-      if (!focusables.length) return;
-      const first = focusables[0]!;
-      const last = focusables[focusables.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("keydown", onKey, true);
-      opener?.focus?.();
-    };
-  }, [openIndex, onClose]);
+  useFocusTrap(ref, openIndex !== null, onClose);
 
   if (openIndex === null) return null;
 

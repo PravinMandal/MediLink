@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState } from "react";
 import { Siren } from "lucide-react";
 import {
   addClinicalRecordAction,
@@ -13,6 +13,7 @@ import { requestAccessAction } from "@/server/actions/patient-actions";
 import { submitVerificationAction } from "@/server/actions/doctor-actions";
 import { Field, Input, Select, Textarea, Badge, FormErrorSummary } from "./ui";
 import { SubmitButton, useFocusFirstError } from "./interactive";
+import { useFocusTrap } from "./use-focus-trap";
 
 function StateLine({ state }: { state: { error?: string; ok?: string } }) {
   return (
@@ -124,40 +125,8 @@ export function BreakGlassForm({ patientId }: { patientId?: string }) {
       ? state.error
       : undefined;
 
-  useEffect(() => {
-    if (!open) return;
-    const dialog = dialogRef.current;
-    const opener = document.activeElement as HTMLElement | null;
-    dialog?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setOpen(false);
-        return;
-      }
-      if (e.key !== "Tab" || !dialog) return;
-      // Focus trap: cycle within the dialog
-      const focusables = dialog.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-      );
-      if (!focusables.length) return;
-      const first = focusables[0]!;
-      const last = focusables[focusables.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("keydown", onKey, true);
-      opener?.focus?.();
-    };
-  }, [open]);
+  const closeDialog = useCallback(() => setOpen(false), []);
+  useFocusTrap(dialogRef, open, closeDialog);
 
   if (state.ok) {
     return (

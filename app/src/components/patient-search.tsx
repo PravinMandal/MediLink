@@ -10,6 +10,7 @@ import {
 } from "@/server/actions/discovery-actions";
 import { Field, Input, Select, Textarea, FormErrorSummary } from "./ui";
 import { SubmitButton } from "./interactive";
+import { CONSENT_SCOPES } from "./consent-scopes";
 
 export type ScopeOption = { value: string; label: string };
 
@@ -173,18 +174,8 @@ const PURPOSES = [
   { value: "record_review", label: "Record review" },
 ];
 
-/** Client-safe mirror of SCOPE_LABELS (the consent service module pulls in
- *  the DB and cannot be imported from a client component). */
-const SUGGESTABLE_SCOPES: ScopeOption[] = [
-  { value: "demographics", label: "Demographics & identity" },
-  { value: "conditions", label: "Conditions & diagnoses" },
-  { value: "allergies", label: "Allergies" },
-  { value: "medications", label: "Medications & prescriptions" },
-  { value: "lab_results", label: "Lab results" },
-  { value: "imaging", label: "Imaging & radiology" },
-  { value: "procedures", label: "Procedures & surgeries" },
-  { value: "documents", label: "Source documents" },
-];
+/** Shared catalog — see consent-scopes.ts. */
+const SUGGESTABLE_SCOPES: ScopeOption[] = CONSENT_SCOPES;
 
 export function AccessRequestForm({
   patientId,
