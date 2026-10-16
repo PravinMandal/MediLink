@@ -46,25 +46,42 @@ export function SectionTabs({ tabs }: { tabs: SectionTab[] }) {
       onKeyDown={onKeyDown}
       className="mb-4 flex gap-1 overflow-x-auto border-b border-line"
     >
-      {tabs.map((t) => (
-        <Link
-          key={t.key}
-          href={t.href}
-          role="tab"
-          aria-selected={t.active}
-          aria-disabled={!t.allowed || undefined}
-          tabIndex={t.active ? 0 : -1}
-          className={cn(
-            "-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
-            t.active
-              ? "border-pine text-pine-ink"
-              : "border-transparent text-ink-soft hover:text-ink",
-            !t.allowed ? "opacity-40" : "",
-          )}
-        >
-          {t.label}
-        </Link>
-      ))}
+      {tabs.map((t) =>
+        !t.allowed ? (
+          <span
+            key={t.key}
+            role="tab"
+            aria-selected={t.active}
+            aria-disabled="true"
+            tabIndex={t.active ? 0 : -1}
+            className={cn(
+              "-mb-px shrink-0 cursor-not-allowed border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
+              t.active
+                ? "border-pine text-pine-ink"
+                : "border-transparent text-ink-soft hover:text-ink",
+              "opacity-40",
+            )}
+          >
+            {t.label}
+          </span>
+        ) : (
+          <Link
+            key={t.key}
+            href={t.href}
+            role="tab"
+            aria-selected={t.active}
+            tabIndex={t.active ? 0 : -1}
+            className={cn(
+              "-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
+              t.active
+                ? "border-pine text-pine-ink"
+                : "border-transparent text-ink-soft hover:text-ink",
+            )}
+          >
+            {t.label}
+          </Link>
+        ),
+      )}
     </div>
   );
 }

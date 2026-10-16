@@ -8,7 +8,8 @@ import { chromium } from "playwright";
 import jsQR from "jsqr";
 
 // Opaque emergency URL shape (D29: never a raw patient-UUID URL).
-const url = "http://localhost:3000/e/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BASE = process.argv[2] ?? process.env.BASE_URL ?? "http://localhost:3000";
+const url = `${BASE}/e/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`;
 const html = renderToStaticMarkup(
   React.createElement(EmergencyCard, {
     data: {
@@ -24,6 +25,12 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 900 }, deviceScaleFactor: 4 });
 await page.setContent(`<body style="margin:0;background:#fff">${html}</body>`);
 const el = await page.$('svg[role="img"][aria-label^="QR code"]');
+if (!el) {
+  console.error("QR FAILED: QR svg element not found in rendered EmergencyCard");
+  await page.close();
+  await browser.close();
+  process.exit(1);
+}
 const buf = await el.screenshot();
 await page.close();
 await browser.close();

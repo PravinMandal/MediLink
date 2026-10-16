@@ -91,6 +91,13 @@ interface GuardUser {
   id: string;
   role: "patient" | "doctor" | "lab_staff" | "org_admin" | "platform_admin";
   organizationId?: string | null;
+  /**
+   * Explicit assurance overrides the live step-up cookie. Production
+   * callers omit it (resolved from the session here); tests that arm
+   * break-glass directly — bypassing the action-layer password check —
+   * must pass "step_up" to mirror the assurance the real flow guarantees.
+   */
+  sessionAssurance?: "standard" | "step_up";
 }
 
 function toDecision(d: PolicyDecision): AccessDecision {
@@ -113,11 +120,26 @@ export const access = {
   ): Promise<AccessDecision> {
     const wanted =
       scope === "*" ? "*" : Array.isArray(scope) ? scope : [scope];
+    // Assurance defaults to the live step-up cookie: callers that already
+    // resolved it (e.g. the summary action) pass it explicitly; everyone
+    // else gets it resolved here so no emergency-capable path can forget.
+    // Outside a request scope (unit tests) cookies() throws — fall back to
+    // undefined, which the policy treats as standard assurance.
+    let assurance = user.sessionAssurance;
+    if (!assurance) {
+      try {
+        const { sessionAssuranceFor } = await import("@/server/session");
+        assurance = await sessionAssuranceFor(user.id);
+      } catch {
+        assurance = undefined;
+      }
+    }
     const decision = await policy.evaluate(
       {
         actorId: user.id,
         role: user.role,
         organizationId: user.organizationId ?? null,
+        sessionAssurance: assurance,
       },
       patientId,
       wanted,

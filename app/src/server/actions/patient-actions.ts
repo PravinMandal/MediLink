@@ -75,16 +75,15 @@ export async function grantConsentAction(
   // into NaN (Math.min(NaN,...) → NaN → 1-day grant via later NaN quirks).
   const rawDays = Number(formData.get("days") ?? 7);
   const days = Math.min(
-    Math.max(Number.isFinite(rawDays) ? rawDays : 7, 1),
+    Math.max(Number.isFinite(rawDays) ? Math.floor(rawDays) : 7, 1),
     365,
   );
   const purposeR = field(formData.get("purpose") ?? "treatment", FIELD_LIMITS.short, { label: "Purpose", required: true });
   if (!purposeR.ok) return { error: purposeR.error };
-  const purpose = purposeR.value as
-    | "treatment"
-    | "consultation"
-    | "emergency"
-    | "record_review";
+  const PURPOSES = ["treatment", "consultation", "emergency", "record_review"] as const;
+  if (!(PURPOSES as readonly string[]).includes(purposeR.value))
+    return { error: "Choose a valid purpose." };
+  const purpose = purposeR.value as (typeof PURPOSES)[number];
   const rawScopes = formData.getAll("scopes").map(String);
   if (rawScopes.some((s) => s.length > FIELD_LIMITS.short))
     return { error: "One of the selected scopes is too long." };
@@ -235,6 +234,14 @@ export async function raiseDisputeAction(
   const resourceTypeR = field(formData.get("resourceType"), FIELD_LIMITS.short, { label: "Record type", required: true });
   if (!resourceTypeR.ok) return { error: resourceTypeR.error };
   const resourceType = resourceTypeR.value;
+  // Fail closed: only known clinical tables (the set scopeForResource maps
+  // in access/guard.ts) may be flagged — never an arbitrary resource type.
+  try {
+    const { scopeForResource } = await import("@/server/modules/access/guard");
+    scopeForResource(resourceType);
+  } catch {
+    return { error: "Unknown record type." };
+  }
   const reasonR = field(formData.get("reason"), FIELD_LIMITS.long, { label: "Reason", required: true });
   if (!reasonR.ok) return { error: reasonR.error };
   const reason = reasonR.value;
@@ -298,10 +305,15 @@ export async function updateAccountAction(
   if (!phoneR.ok) return { error: phoneR.error };
   const name = nameR.value;
   const phone = phoneR.value ?? "";
-  await db
-    .update(userTable)
-    .set({ name, phone: phone || null, updatedAt: new Date() })
-    .where(eq(userTable.id, user.id));
+  try {
+    await db
+      .update(userTable)
+      .set({ name, phone: phone || null, updatedAt: new Date() })
+      .where(eq(userTable.id, user.id));
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    return { error: "Could not update the account. Try again." };
+  }
   revalidatePath("/portal", "layout");
   return { ok: "Account updated." };
 }

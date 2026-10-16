@@ -10,7 +10,8 @@ export function OrgUploadSection({
 }: {
   patients: Array<{ id: string; fullName: string }>;
 }) {
-  const [patientId, setPatientId] = useState(patients[0]?.id ?? "");
+  const [id, setPatientId] = useState<string | undefined>(undefined);
+  const patientId = id ?? patients[0]?.id ?? "";
 
   if (!patients.length) {
     return (

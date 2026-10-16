@@ -57,7 +57,7 @@ for (const [mode, t] of Object.entries(modes)) {
   const action_primary = mode === "Daylight" ? "#14594b" : mode === "Obsidian" ? "#4dbfa4" : "#000000";
   console.log(`\n${mode}`);
   for (const [name, fgKey, bgKey, largeOnly] of pairs) {
-    const fg = fgKey === "on_action_primary" ? t[fgKey] : t[fgKey];
+    const fg = t[fgKey];
     const bg = bgKey === "action_primary" ? action_primary : t[bgKey];
     const r = ratio(fg, bg);
     const min = largeOnly ? 3 : 4.5;

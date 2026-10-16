@@ -59,6 +59,10 @@ export function ThemeSettings() {
                   const idx = OPTIONS.findIndex((o) => o.value === opt.value);
                   const next = OPTIONS[(idx + (e.key === "ArrowRight" ? 1 : OPTIONS.length - 1)) % OPTIONS.length];
                   applyTheme(next.value);
+                  const group = e.currentTarget.parentElement;
+                  group?.querySelectorAll<HTMLButtonElement>("[role='radio']")[
+                    OPTIONS.findIndex((o) => o.value === next.value)
+                  ]?.focus();
                 }}
                 className={cn(
                   "glass-hover flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left",

@@ -242,14 +242,28 @@ export const policy = {
             eq(emergencyAccessEvents.patientId, patientId),
             eq(emergencyAccessEvents.practitionerId, practitioner.id),
             gt(emergencyAccessEvents.expiresAt, new Date()),
+            // A reviewed window is closed: only NULL/pending keep
+            // authorizing. The old query let a reviewed event grant until
+            // expiry, so a closed break-glass kept opening records.
             or(
               isNull(emergencyAccessEvents.reviewStatus),
               eq(emergencyAccessEvents.reviewStatus, "pending"),
-              eq(emergencyAccessEvents.reviewStatus, "reviewed"),
             ),
           ),
         );
       if (emergency) {
+        // Emergency reads ride break-glass: demand fresh step-up assurance.
+        // The action layer confirms the password; the policy enforces the
+        // result, so a standard session can never read through this path.
+        if (ctx.sessionAssurance !== "step_up") {
+          const d = deny(
+            ctx,
+            "step_up_required",
+            "Emergency access requires re-entering your password to confirm it is you.",
+          );
+          await record(d, ctx, patientId, action, wanted);
+          return d;
+        }
         const ok =
           wanted === "*"
             ? true

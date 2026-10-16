@@ -31,8 +31,20 @@ export function NotificationBell({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState({ items, unread });
+  // Last server snapshot + local optimistic overrides. Render derives from
+  // props (never setState-in-effect): overrides are keyed by the snapshot
+  // they apply to, so a fresh server render discards stale ones.
+  const [prevItems, setPrevItems] = useState(items);
+  const [overrides, setOverrides] = useState<Map<string, string>>(new Map());
+  if (prevItems !== items) {
+    setPrevItems(items);
+    setOverrides(new Map());
+  }
   const [pending, startTransition] = useTransition();
+  const state = {
+    items: items.map((i) => (overrides.has(i.id) ? { ...i, readAt: overrides.get(i.id)! } : i)),
+    unread: Math.max(0, unread - overrides.size),
+  };
 
   const openPanel = () => {
     const next = !open;
@@ -43,10 +55,8 @@ export function NotificationBell({
   };
 
   const markAll = () => {
-    setState((s) => ({
-      items: s.items.map((i) => ({ ...i, readAt: i.readAt ?? new Date().toISOString() })),
-      unread: 0,
-    }));
+    const now = new Date().toISOString();
+    setOverrides(new Map(items.map((i) => [i.id, i.readAt ?? now])));
     startTransition(async () => {
       await markAllReadAction();
       router.refresh();
@@ -54,15 +64,11 @@ export function NotificationBell({
   };
 
   const markOne = (id: string) => {
-    setState((s) => {
-      const item = s.items.find((i) => i.id === id);
-      if (!item || item.readAt) return s;
-      return {
-        items: s.items.map((i) =>
-          i.id === id ? { ...i, readAt: new Date().toISOString() } : i,
-        ),
-        unread: Math.max(0, s.unread - 1),
-      };
+    setOverrides((prev) => {
+      if (prev.has(id) || items.find((i) => i.id === id)?.readAt) return prev;
+      const next = new Map(prev);
+      next.set(id, new Date().toISOString());
+      return next;
     });
     startTransition(async () => {
       await markReadAction(id);

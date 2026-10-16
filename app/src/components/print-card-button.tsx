@@ -6,11 +6,12 @@ import { useState } from "react";
  * Print helper — isolates the emergency card for printing via a body class
  * toggled before/after window.print().
  */
-export function PrintEmergencyCard() {
+export function PrintEmergencyCard({ label }: { label?: string }) {
   const [printing, setPrinting] = useState(false);
   return (
     <button
       type="button"
+      aria-label={label}
       disabled={printing}
       onClick={async () => {
         setPrinting(true);

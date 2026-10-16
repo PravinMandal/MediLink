@@ -24,7 +24,7 @@ async function signIn(email) {
     .filter(([k]) => k.toLowerCase() === "set-cookie")
     .map(([, v]) => v.split(";")[0]);
   const cookie = cookies.length ? cookies.join("; ") : raw.split(";")[0];
-  return { ok: res.ok, cookie };
+  return { ok: res.ok, status: res.status, cookie };
 }
 
 async function visit(who, cookie, path, expectText) {
@@ -81,23 +81,28 @@ const ROLES = [
 ];
 
 for (const [role, email, pages] of ROLES) {
-  const { ok, cookie } = await signIn(email);
-  log(role, `sign-in ${email}`, ok, ok ? "" : `status ${ok}`);
+  const { ok, status, cookie } = await signIn(email);
+  log(role, `sign-in ${email}`, ok, ok ? "" : `status ${status}`);
   if (!ok) continue;
   for (const [path] of pages) {
     await visit(role, cookie, path);
   }
 }
 
-// Cross-role guard: lab user must NOT see admin console content
+// Cross-role guard: lab user must NOT see admin console content (the page
+// renders 200 with a restricted notice — queue counts must not leak).
 const { cookie: labCookie } = await signIn("lab@sunrise.health");
-const adminHtml = await fetch(`${BASE}/portal/admin`, { headers: { cookie: labCookie } }).then((r) => r.text());
+const labAdminRes = await fetch(`${BASE}/portal/admin`, { headers: { cookie: labCookie } });
+const adminHtml = await labAdminRes.text();
 const leaked = adminHtml.includes("Provider verification") || adminHtml.includes("Emergency review");
-log("guard", "lab user blocked from admin", !leaked, leaked ? "queue data leaked" : "restricted message shown");
+const restricted = adminHtml.includes("restricted to platform administrators");
+log("guard", "lab user blocked from admin", labAdminRes.status === 200 && !leaked && restricted,
+  `status ${labAdminRes.status}${leaked ? " · queue data leaked" : ""}${restricted ? "" : " · restricted notice missing"}`);
 
 // Unauthenticated guard
-const anonHtml = await fetch(`${BASE}/portal/patient`, { redirect: "manual" });
-log("guard", "anonymous redirected from portal", anonHtml.status >= 300 && anonHtml.status < 400);
+const anonRes = await fetch(`${BASE}/portal/patient`, { redirect: "manual" });
+log("guard", "anonymous redirected from portal", anonRes.status >= 300 && anonRes.status < 400,
+  `status ${anonRes.status}`);
 
 const fails = results.filter((r) => !r.ok);
 console.log(`\n=== ${results.length - fails.length}/${results.length} checks passed ===`);

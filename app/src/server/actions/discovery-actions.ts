@@ -137,9 +137,15 @@ export async function createAccessRequestAction(
   if (!visitRefR.ok) return { error: visitRefR.error };
   const visitReference = visitRefR.value;
   const days = Number(formData.get("days") ?? 7);
-  const suggested = formData.getAll("suggestedScopes").map(String);
-  if (suggested.some((s) => s.length > FIELD_LIMITS.short))
+  const rawSuggested = formData.getAll("suggestedScopes").map(String);
+  if (rawSuggested.some((s) => s.length > FIELD_LIMITS.short))
     return { error: "One of the suggested scopes is too long." };
+  // Filter to the same ConsentScope allowlist as grantConsentAction — the
+  // requester's suggestion is advisory, never authoritative.
+  const { ALL_SCOPES } = await import("@/server/modules/consent/service");
+  const suggested = rawSuggested.filter((s): s is (typeof ALL_SCOPES)[number] =>
+    (ALL_SCOPES as readonly string[]).includes(s),
+  );
 
   if (!patientId) return { error: "Missing patient." };
   if (!Number.isFinite(days) || days < 1 || days > 90) {
@@ -284,36 +290,45 @@ export async function reportConcernAction(
 
   // Verify the request targets THIS patient's record: without this, any
   // logged-in user could file concerns against arbitrary request ids and
-  // poison the audit trail with attacker-chosen resource ids.
-  const { accessRequestsService } = await import("@/server/modules/consent/access-requests");
-  const req = await accessRequestsService.byId(requestId);
-  if (!req) return { error: "Request not found." };
-  await accessRequestsService.assertOwnership(user.id, req.patientId);
+  // poison the audit trail with attacker-chosen resource ids. Everything
+  // after validation runs inside try so an ownership failure maps to the
+  // same "not found" wording as a missing row — never an oracle.
+  try {
+    const { accessRequestsService } = await import("@/server/modules/consent/access-requests");
+    const req = await accessRequestsService.byId(requestId);
+    if (!req) return { error: "Request not found." };
+    await accessRequestsService.assertOwnership(user.id, req.patientId);
 
-  const { audit } = await import("@/server/modules/audit/service");
-  const { notify } = await import("@/server/modules/notifications/service");
-  const [adminRow] = await db
-    .select({ id: (await import("@/server/db/schema")).user.id })
-    .from((await import("@/server/db/schema")).user)
-    .where(eq((await import("@/server/db/schema")).user.role, "platform_admin"))
-    .limit(1);
-  await audit.record({
-    actorId: user.id,
-    actorRole: user.role,
-    patientId: req.patientId,
-    action: "access_request.concern_reported",
-    resourceType: "access_request",
-    resourceId: requestId,
-    reason,
-  });
-  if (adminRow) {
-    await notify.push({
-      userId: adminRow.id,
-      type: "access_request",
-      title: "A patient reported an access request concern",
-      body: reason.slice(0, 200),
-      link: "/portal/admin",
+    const { audit } = await import("@/server/modules/audit/service");
+    const { notify } = await import("@/server/modules/notifications/service");
+    const [adminRow] = await db
+      .select({ id: (await import("@/server/db/schema")).user.id })
+      .from((await import("@/server/db/schema")).user)
+      .where(eq((await import("@/server/db/schema")).user.role, "platform_admin"))
+      .limit(1);
+    await audit.record({
+      actorId: user.id,
+      actorRole: user.role,
+      patientId: req.patientId,
+      action: "access_request.concern_reported",
+      resourceType: "access_request",
+      resourceId: requestId,
+      reason,
     });
+    if (adminRow) {
+      await notify.push({
+        userId: adminRow.id,
+        type: "access_request",
+        title: "A patient reported an access request concern",
+        body: reason.slice(0, 200),
+        link: "/portal/admin",
+      });
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
+    if (err instanceof Error && err.message === "ACCESS_DENIED")
+      return { error: "Request not found." };
+    return { error: "Could not report this concern. Try again." };
   }
   return { ok: "Reported. Our trust and safety team will review this request." };
 }

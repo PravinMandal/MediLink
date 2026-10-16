@@ -15,7 +15,6 @@ export function UploadDocumentForm({ patientId }: { patientId: string }) {
   const [state, action] = useActionState(uploadDocumentAction, {});
   const formRef = useFocusFirstError(state.error);
   const [fileError, setFileError] = useState<string | undefined>(undefined);
-  const fileErrorId = "u-file-oversize";
   const fieldErrors = {
     title: state.error === "Give the document a title." ? state.error : undefined,
     file:
@@ -78,11 +77,6 @@ export function UploadDocumentForm({ patientId }: { patientId: string }) {
               );
             }}
             aria-invalid={fieldErrors.file ? true : undefined}
-            aria-describedby={
-              [fieldErrors.file ? "u-file-error" : null, fileError ? fileErrorId : null]
-                .filter(Boolean)
-                .join(" ") || undefined
-            }
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/*,text/plain"
             className="w-full cursor-pointer rounded-lg border border-line-strong bg-paper-raised px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-pine-tint file:px-2.5 file:py-1 file:text-[12px] file:font-medium file:text-pine-ink"
           />

@@ -79,7 +79,6 @@ function ReviewButtons({
         <>
           <form action={formAction} className="flex items-center gap-2">
             <input type="hidden" name={idName} value={id} />
-            <input type="hidden" name="approve" value="1" />
             <input
               type="hidden"
               name={idName === "eventId" ? "status" : "approve"}
@@ -147,8 +146,8 @@ export function ReviewEmergencyButtons({ eventId }: { eventId: string }) {
 
 type VerifyState = FormState & { brokenAt?: number | null };
 
-// useActionState's adapter signature needs named params it ignores; keeping
-// the wrapper named avoids unused-var lint noise inline.
+// useActionState action takes no inputs — the chain verification reads
+// nothing from the form, so the adapter needs no parameters at all.
 async function verifyAuditChainWrapper(): Promise<VerifyState> {
   return verifyAuditChainAction();
 }

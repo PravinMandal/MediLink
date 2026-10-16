@@ -22,14 +22,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const tmpDbDir = mkdtempSync(join(tmpdir(), "medilink-p0-"));
 process.env.MEDILINK_PG_DIR = join(tmpDbDir, "db");
-// Explicit mock opt-in: production defaults to manual review.
-process.env.VERIFICATION_PROVIDER = "mock";
-// Explicit mock opt-in: production defaults to manual review.
-process.env.VERIFICATION_PROVIDER = "mock";
 // Explicit mock opt-in: production defaults to manual review.
 process.env.VERIFICATION_PROVIDER = "mock";
 
@@ -796,7 +792,7 @@ describe("Audit checkpoints", () => {
     await audit.record({ actorId: adminId, action: "test.before.tamper" });
     // Direct DB mutation (simulating a privileged operator rewrite)
     await db.execute(
-      `UPDATE audit_events SET action = 'tampered.action' WHERE action = 'test.before.tamper'`,
+      sql`UPDATE audit_events SET action = 'tampered.action' WHERE action = 'test.before.tamper'`,
     );
     const v = await checkpoints.verify();
     expect(v.chainBreakSeq).not.toBeNull();

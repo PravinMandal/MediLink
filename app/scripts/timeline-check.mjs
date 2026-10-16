@@ -1,6 +1,6 @@
 // E2E: patient timeline filter + search with snippets.
 import { chromium } from "playwright";
-const base = "http://localhost:3000";
+const base = process.argv[2] ?? process.env.BASE_URL ?? "http://localhost:3000";
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 375, height: 667 } });
 let failures = 0;

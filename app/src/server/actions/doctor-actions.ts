@@ -28,6 +28,27 @@ function guardUser(user: SessionUser) {
   };
 }
 
+// pgEnum-backed casts must be allowlisted: an arbitrary string would either
+// throw a raw DB error or land unvalidated. Criticality stays free text by
+// design (values like "critical" are in active use).
+const CONDITION_STATUSES = ["active", "chronic", "resolved"] as const;
+const MEDICATION_STATUSES = ["active", "stopped", "completed"] as const;
+const DOCUMENT_KINDS = [
+  "lab_report",
+  "prescription",
+  "discharge_summary",
+  "imaging_report",
+  "consultation_note",
+  "other",
+] as const;
+
+function asEnum<T extends string>(
+  value: string,
+  allowed: readonly T[],
+): T | null {
+  return (allowed as readonly string[]).includes(value) ? (value as T) : null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Verification                                                        */
 /* ------------------------------------------------------------------ */
@@ -113,13 +134,15 @@ export async function addClinicalRecordAction(
         if (!notesR.ok) return { error: notesR.error };
         const statusR = field(formData.get("status") ?? "active", FIELD_LIMITS.short, { label: "Status" });
         if (!statusR.ok) return { error: statusR.error };
+        const conditionStatus = asEnum(statusR.value, CONDITION_STATUSES);
+        if (!conditionStatus) return { error: "Choose a valid status." };
         const onsetR = optField(formData.get("onsetDate"), FIELD_LIMITS.short, { label: "Onset date" });
         if (!onsetR.ok) return { error: onsetR.error };
         await records.addCondition(
           patientId,
           {
             name: nameR.value,
-            status: (statusR.value as "active" | "chronic" | "resolved"),
+            status: conditionStatus,
             onsetDate: onsetR.value,
             notes: notesR.value,
           },
@@ -329,9 +352,8 @@ export async function uploadDocumentAction(
   if (!titleR.ok) return { error: titleR.error };
   const kindR = field(formData.get("kind") ?? "lab_report", FIELD_LIMITS.short, { label: "Kind" });
   if (!kindR.ok) return { error: kindR.error };
-  const kind = kindR.value as Parameters<
-    typeof ingestDocumentV2
-  >[0]["kind"];
+  const kind = asEnum(kindR.value, DOCUMENT_KINDS);
+  if (!kind) return { error: "Choose a valid document kind." };
   const recordedR = optField(formData.get("recordedDate"), FIELD_LIMITS.short, { label: "Recorded date" });
   if (!recordedR.ok) return { error: recordedR.error };
   const recordedDate = recordedR.value;
@@ -340,6 +362,9 @@ export async function uploadDocumentAction(
 
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file to upload." };
   if (file.name.length > FIELD_LIMITS.short) return { error: "File name is too long (max 200 characters). Rename it and try again." };
+  // Bound in-memory buffering: arrayBuffer() holds the whole file in RAM.
+  const MAX_DOC_BYTES = 15 * 1024 * 1024;
+  if (file.size > MAX_DOC_BYTES) return { error: "File is too large (max 15 MB)." };
 
   try {
     if (user.role === "doctor") {
@@ -455,7 +480,9 @@ export async function generateSummaryAction(
   try {
     // "*" requires any active grant (or emergency); the decision's scopes
     // then constrain the summary so a partial grant never yields a
-    // full-record SBAR.
+    // full-record SBAR. Assurance resolves inside access.check, so the
+    // policy — not the action — decides whether this session may read via
+    // break-glass.
     const decision = await access.assert(guardUser(user), patientId, "*");
     const granted =
       decision.via === "emergency"
@@ -652,13 +679,12 @@ export async function correctRecordAction(
       if (!onsetR.ok) return { error: onsetR.error };
       const notesR = optField(formData.get("notes"), FIELD_LIMITS.long, { label: "Notes" });
       if (!notesR.ok) return { error: notesR.error };
+      const correctConditionStatus = asEnum(statusR.value, CONDITION_STATUSES);
+      if (!correctConditionStatus) return { error: "Choose a valid status." };
       data = {
         kind: "condition",
         name: nameR.value,
-        status: statusR.value as
-          | "active"
-          | "resolved"
-          | "chronic",
+        status: correctConditionStatus,
         onsetDate: onsetR.value,
         notes: notesR.value,
       };
@@ -691,6 +717,8 @@ export async function correctRecordAction(
       if (!startR.ok) return { error: startR.error };
       const statusR = field(formData.get("status") ?? "active", FIELD_LIMITS.short, { label: "Status" });
       if (!statusR.ok) return { error: statusR.error };
+      const correctMedicationStatus = asEnum(statusR.value, MEDICATION_STATUSES);
+      if (!correctMedicationStatus) return { error: "Choose a valid status." };
       data = {
         kind: "medication",
         medication: medicationR.value,
@@ -698,10 +726,7 @@ export async function correctRecordAction(
         route: routeR.value,
         frequency: freqR.value,
         startDate: startR.value,
-        status: statusR.value as
-          | "active"
-          | "stopped"
-          | "completed",
+        status: correctMedicationStatus,
         prescriberId: practitioner.id,
       };
     }

@@ -12,12 +12,14 @@ export function SmoothScroll() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (window.matchMedia("(pointer: coarse)").matches) return;
+    let cancelled = false;
     let cleanup: (() => void) | undefined;
     (async () => {
       const [{ default: Lenis }, { gsap }] = await Promise.all([
         import("lenis"),
         import("gsap"),
       ]);
+      if (cancelled) return;
       const lenis = new Lenis({ duration: 1.15, smoothWheel: true });
       const tick = (time: number) => lenis.raf(time * 1000);
       gsap.ticker.add(tick);
@@ -27,7 +29,10 @@ export function SmoothScroll() {
         lenis.destroy();
       };
     })();
-    return () => cleanup?.();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
   }, []);
   return null;
 }

@@ -137,11 +137,6 @@ export async function signUpAction(
   if (!authThrottled(email)) {
     return { error: "Too many attempts. Wait a minute and try again." };
   }
-  // Same per-address throttle as sign-in: without it, signup doubles as an
-  // unauthenticated existence oracle AND an unlimited account-creation pipe.
-  if (!authThrottled(email)) {
-    return { error: "Too many attempts. Wait a minute and try again." };
-  }
 
   let userId: string | undefined;
   try {
@@ -223,6 +218,11 @@ export async function forgotPasswordAction(
   if (!emailR.ok) return { error: emailR.error };
   const email = emailR.value.toLowerCase();
   if (!email) return { error: "Enter your email." };
+  // Same per-address throttle as resendVerificationAction: without it, this
+  // endpoint is an unlimited mail-spend pipe AND an oracle (timing/volume).
+  if (!authThrottled(email)) {
+    return { ok: "If an account exists, a reset link is on its way." };
+  }
   try {
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: "/reset-password" },

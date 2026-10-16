@@ -174,7 +174,7 @@ export const emergency = {
    * patient self-access); every read is audited. Never callable bare.
    */
   async profile(
-    user: { id: string; role: "patient" | "doctor" | "lab_staff" | "org_admin" | "platform_admin"; organizationId?: string | null },
+    user: { id: string; role: "patient" | "doctor" | "lab_staff" | "org_admin" | "platform_admin"; organizationId?: string | null; sessionAssurance?: "standard" | "step_up" },
     patientId: string,
   ) {
     const decision = await access.assert(user, patientId, EMERGENCY_SCOPES);

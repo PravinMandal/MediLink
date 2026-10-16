@@ -28,15 +28,32 @@ function sender(): string {
   );
 }
 
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/** Only same-app https URLs may appear as a CTA — never attacker strings. */
+function safeCtaUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw, process.env.NEXT_PUBLIC_APP_URL ?? "https://medilink-health.vercel.app");
+    if (u.protocol !== "https:") return undefined;
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function wrapHtml(opts: { title: string; body: string; ctaLabel?: string; ctaUrl?: string }): string {
   const { title, body, ctaLabel, ctaUrl } = opts;
+  const safeUrl = safeCtaUrl(ctaUrl);
   return `<!doctype html><html><body style="margin:0;background:#0B1220;padding:32px 16px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
 <div style="max-width:480px;margin:0 auto;background:#111A2E;border:1px solid #22314F;border-radius:20px;padding:32px 28px;color:#EDF1F7;">
 <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(180deg,#2E6FE8,#12429E);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;">M</div>
-<h1 style="font-size:20px;margin:20px 0 8px;">${title}</h1>
-<p style="font-size:14px;line-height:1.6;color:#B6C0CD;">${body}</p>
-${ctaUrl ? `<a href="${ctaUrl}" style="display:inline-block;margin-top:16px;background:#2E6FE8;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;">${ctaLabel ?? "Continue"}</a>` : ""}
-<p style="margin-top:20px;font-size:12px;color:#8F99A6;">If the button doesn't work, paste this link:<br/><span style="word-break:break-all;">${ctaUrl ?? ""}</span></p>
+<h1 style="font-size:20px;margin:20px 0 8px;">${escHtml(title)}</h1>
+<p style="font-size:14px;line-height:1.6;color:#B6C0CD;">${escHtml(body)}</p>
+${safeUrl ? `<a href="${escHtml(safeUrl)}" style="display:inline-block;margin-top:16px;background:#2E6FE8;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;">${escHtml(ctaLabel ?? "Continue")}</a>` : ""}
+<p style="margin-top:20px;font-size:12px;color:#8F99A6;">If the button doesn't work, paste this link:<br/><span style="word-break:break-all;">${safeUrl ? escHtml(safeUrl) : ""}</span></p>
 <p style="margin-top:16px;font-size:12px;color:#8F99A6;">MediLink · consented health records · this link expires in 24 hours.</p>
 </div></body></html>`;
 }

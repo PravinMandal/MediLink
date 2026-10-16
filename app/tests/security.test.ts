@@ -26,12 +26,6 @@ process.env.MEDILINK_PG_DIR = join(tmpDbDir, "db");
 // Explicit mock opt-in: production defaults to manual review, and these
 // fixtures rely on mock auto-approval for practitioner verification.
 process.env.VERIFICATION_PROVIDER = "mock";
-// Explicit mock opt-in: production defaults to manual review, and these
-// fixtures rely on mock auto-approval for practitioner verification.
-process.env.VERIFICATION_PROVIDER = "mock";
-// Explicit mock opt-in: production defaults to manual review, and these
-// fixtures rely on mock auto-approval for practitioner verification.
-process.env.VERIFICATION_PROVIDER = "mock";
 
 let db: typeof import("../src/server/db").db;
 let auth: typeof import("../src/server/auth").auth;
@@ -337,16 +331,19 @@ describe("Break-glass emergency access", () => {
     });
     expect(event.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
-    const allergies = await access.check(
+    // The real flow confirms the doctor's password (step-up) before arming;
+    // the direct service call above bypasses that, so mirror the resulting
+    // assurance explicitly — without it the policy must deny (verified
+    // below by the no-step-up negative case).
+    const bgUser = { id: doctorBId, role: "doctor" as const, sessionAssurance: "step_up" as const };
+    const allergies = await access.check(bgUser, patientAId, "allergies");
+    const documents = await access.check(bgUser, patientAId, "documents");
+    const noStepUp = await access.check(
       { id: doctorBId, role: "doctor" },
       patientAId,
       "allergies",
     );
-    const documents = await access.check(
-      { id: doctorBId, role: "doctor" },
-      patientAId,
-      "documents",
-    );
+    expect(noStepUp.allowed).toBe(false);
     expect(allergies.allowed).toBe(true);
     expect(allergies.via).toBe("emergency");
     expect(documents.allowed).toBe(false); // outside the critical subset
@@ -371,7 +368,14 @@ describe("Patient-scoped search isolation", () => {
 
     const hitsB = await search.inPatient(patientBId, "atrial fibrillation");
     expect(hitsB.length).toBeGreaterThan(0);
-    expect(hitsB.every((h) => h.label.includes("Bhaskar") || h.trust !== undefined)).toBe(true);
+    // Every hit must resolve to a chunk indexed for patient B — structural
+    // isolation, not a label sniff (SearchHit has no patientId field).
+    const bChunks = await db
+      .select({ recordId: schema.searchChunks.recordId })
+      .from(schema.searchChunks)
+      .where(eq(schema.searchChunks.patientId, patientBId));
+    const bChunkIds = new Set(bChunks.map((c) => c.recordId));
+    expect(hitsB.every((h) => bChunkIds.has(h.recordId))).toBe(true);
 
     const hitsAOwn = await search.inPatient(patientAId, "HbA1c");
     expect(hitsAOwn.length).toBeGreaterThan(0);
@@ -440,21 +444,30 @@ describe("AI summary citation integrity", () => {
     });
     expect(claims.length).toBeGreaterThan(0);
 
-    // Every cited record must belong to patient A
-    const conditions = await records.currentConditions(patientAId);
-    const allergies = await records.currentAllergies(patientAId);
+    // Every cited record must belong to patient A. The summarizer cites
+    // condition, allergy, observation, procedure, encounter,
+    // medication_statement, and document rows — cover them all.
+    const [conditions, allergies, meds, obs, procs, encs, docs] = await Promise.all([
+      records.currentConditions(patientAId),
+      records.currentAllergies(patientAId),
+      records.allMedications(patientAId),
+      records.observationsFor(patientAId),
+      records.proceduresFor(patientAId),
+      records.encountersFor(patientAId),
+      records.documentsFor(patientAId),
+    ]);
     const knownIds = new Set<string>([
       ...conditions.map((c) => c.id),
       ...allergies.map((a) => a.id),
+      ...meds.map((m) => m.id),
+      ...obs.map((o) => o.id),
+      ...procs.map((p) => p.id),
+      ...encs.map((e) => e.id),
+      ...docs.map((d) => d.id),
     ]);
     for (const claim of claims) {
       for (const source of claim.sources) {
-        // Sources may point at various record types; the invariant tested here
-        // is that condition/allergy citations map to THIS patient's rows.
-        if (source.recordType === "condition" || source.recordType === "allergy") {
-          expect(knownIds.has(source.recordId)).toBe(true);
-        }
-        expect(patientAId.length).toBeGreaterThan(0);
+        expect(knownIds.has(source.recordId)).toBe(true);
       }
     }
     // The deterministic summary never invents uncited clinical claims
@@ -540,7 +553,10 @@ describe("P0 regressions: signup roles, scope-aware summaries, writes, storage",
       patientId: patientAId,
       reason: "Er needing critical history before transfusion",
     });
-    const profile = await emergency.profile({ id: doctorBId, role: "doctor" }, patientAId);
+    const profile = await emergency.profile(
+      { id: doctorBId, role: "doctor", sessionAssurance: "step_up" as const },
+      patientAId,
+    );
     expect(profile.patient.fullName).toBe("Anita Rao");
     const auditRows = await audit.forPatient(patientAId, 500);
     expect(auditRows.some((r) => r.action === "emergency.profile.viewed")).toBe(true);

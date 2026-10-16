@@ -67,6 +67,18 @@ export default async function OrgConsole() {
     .from(organizations)
     .where(eq(organizations.id, user.organizationId));
 
+  if (!org) {
+    return (
+      <>
+        <PageHeader eyebrow="Facility console" title="Facility not found" />
+        <Alert tone="info" title="Facility record missing">
+          Your account references a facility that no longer exists. Ask a platform admin to
+          re-attach your account.
+        </Alert>
+      </>
+    );
+  }
+
   const [staff, consentedPatients, recentDocs] = await Promise.all([
     db
       .select({ id: userTable.id, name: userTable.name, role: userTable.role, verificationStatus: userTable.verificationStatus })

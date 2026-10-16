@@ -69,10 +69,11 @@ function fmtDate(s: string | null | undefined): string {
 /* Deterministic SBAR builder                                          */
 /* ------------------------------------------------------------------ */
 
-/** Does this claim cite at least one source permitted by the granted scopes? */
+/** Every source a claim cites must sit within the granted scopes — one
+ *  in-scope citation must not smuggle an out-of-scope record's content. */
 function claimWithinScopes(claim: Claim, scopes: ConsentScope[] | null): boolean {
   if (!scopes) return true; // unrestricted caller (patient self-access)
-  return claim.sources.some((s) => scopes.includes(scopeForResource(s.recordType)));
+  return claim.sources.every((s) => scopes.includes(scopeForResource(s.recordType)));
 }
 
 /**

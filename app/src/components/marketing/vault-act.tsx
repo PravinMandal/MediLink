@@ -312,10 +312,13 @@ export function VaultAct() {
     if (reduced || failed) return;
     const section = sectionRef.current;
     if (!section) return;
+    let cancelled = false;
     let ctx: { revert: () => void } | undefined;
     (async () => {
       const { gsap } = await import("gsap");
+      if (cancelled) return;
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
+      if (cancelled) return;
       gsap.registerPlugin(ScrollTrigger);
       ctx = gsap.context(() => {
         gsap.to(progress.current, {
@@ -340,6 +343,9 @@ export function VaultAct() {
                 // Opacity alone is not enough: captions render with
                 // visibility:hidden + inert, and neither was ever toggled —
                 // so only Beat 01 ever painted (then an empty stage).
+                el.style.transition = on
+                  ? "opacity 300ms, visibility 0s"
+                  : "opacity 300ms, visibility 0s 300ms";
                 el.style.opacity = on ? "1" : "0";
                 el.style.visibility = on ? "visible" : "hidden";
                 el.setAttribute("aria-hidden", String(!on));
@@ -350,7 +356,10 @@ export function VaultAct() {
         });
       }, section);
     })();
-    return () => ctx?.revert();
+    return () => {
+      cancelled = true;
+      ctx?.revert();
+    };
   }, [reduced, failed]);
 
   if (reduced || failed) {

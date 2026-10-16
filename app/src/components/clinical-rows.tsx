@@ -58,7 +58,7 @@ function chipState(item: ClinicalItem): Parameters<typeof EvidenceChip>[0]["stat
   if (lifecycle === "corrected") return "corrected";
   if (lifecycle === "entered_in_error") return "entered_in_error";
   if (
-    p?.reviewText.startsWith("Machine-extracted") ||
+    p?.reviewText?.startsWith("Machine-extracted") ||
     item.trust === "extracted"
   )
     return "needs_review";

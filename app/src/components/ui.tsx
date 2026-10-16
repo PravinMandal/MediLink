@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { Children, cloneElement, isValidElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId, type ComponentProps, type ReactElement, type ReactNode } from "react";
 
 /* ------------------------------------------------------------------ */
 /* Button                                                              */
@@ -130,6 +130,8 @@ export function Field({
   error?: string;
   children: ReactNode;
 }) {
+  const fallbackId = useId().replace(/:/g, "");
+  const errorId = `${htmlFor ?? fallbackId}-error`;
   return (
     <div className="space-y-1.5">
       <label
@@ -139,7 +141,7 @@ export function Field({
         {label}
       </label>
       {error ? (
-        <p id={`${htmlFor ?? "field"}-error`} className="text-xs font-medium text-alert">
+        <p id={errorId} className="text-xs font-medium text-alert">
           {error}
         </p>
       ) : null}
@@ -151,7 +153,6 @@ export function Field({
         Children.map(children, (child) => {
           if (!isValidElement(child)) return child;
           const prev = (child.props as { "aria-describedby"?: string })["aria-describedby"];
-          const errorId = `${htmlFor ?? "field"}-error`;
           return cloneElement(child as ReactElement<Record<string, unknown>>, {
             "aria-describedby": prev ? `${prev} ${errorId}` : errorId,
             "aria-invalid": true,
